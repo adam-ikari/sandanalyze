@@ -135,6 +135,16 @@ class SandAnalyzeApp(QMainWindow):
         detect_action.triggered.connect(self._run_detection)
         detect_menu.addAction(detect_action)
 
+        # YOLO refinement toggle
+        self._yolo_action = QAction("YOLO精细分割", self)
+        self._yolo_action.setCheckable(True)
+        self._yolo_action.setChecked(True)
+        self._yolo_action.setEnabled(self._yolo_detector.is_available)
+        if not self._yolo_detector.is_available:
+            self._yolo_action.setText("YOLO精细分割 (模型不可用)")
+        detect_menu.addSeparator()
+        detect_menu.addAction(self._yolo_action)
+
         # Help menu
         help_menu = menu_bar.addMenu("帮助(&H)")
         about_action = QAction("关于(&A)...", self)
@@ -217,8 +227,8 @@ class SandAnalyzeApp(QMainWindow):
             traditional_grains = detect_grains(mask, min_area=self._config.min_area)
             self._detection_method = "传统方法"
 
-            # Try YOLO refinement if available
-            if self._yolo_detector.is_available:
+            # Try YOLO refinement if available and enabled
+            if self._yolo_detector.is_available and self._yolo_action.isChecked():
                 self._grains = refine_with_yolo(
                     self._original_image,
                     traditional_grains,

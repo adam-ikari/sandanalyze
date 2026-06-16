@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 # Default model to use
 DEFAULT_MODEL = "yolov8n-seg.pt"
 
+# Threshold for detecting touching grains (aspect ratio of bounding box)
+TOUCHING_THRESHOLD = 2.0
+
 
 class YOLODetector:
     """Grain detector using YOLOv8-seg with graceful fallback.
@@ -163,6 +166,107 @@ class YOLODetector:
         grains.sort(key=lambda g: cv2.contourArea(g.contour), reverse=True)
         return grains
 
+    def detect_in_region(
+        self,
+        image: np.ndarray,
+        region_mask: np.ndarray,
+        conf: float = 0.25,
+        min_area: int = 50,
+    ) -> list[GrainContour]:
+        """Detect grains in a specific region of the image using YOLO.
+
+        This is useful for refining detection in regions where traditional
+        methods struggle (e.g., touching grains).
+
+        Parameters
+        ----------
+        image : np.ndarray
+            Full input image.
+        region_mask : np.ndarray
+            Binary mask defining the region of interest.
+        conf : float, optional
+            Confidence threshold. Default is 0.25.
+        min_area : int, optional
+            Minimum area threshold. Default is 50.
+
+        Returns
+        -------
+        list[GrainContour]
+            Detected grains in the region.
+        """
+        if not self.is_available:
+            return []
+
+        # Extract bounding box of the region
+        ys, xs = np.where(region_mask > 0)
+        if len(xs) == 0:
+            return []
+
+        x_min, x_max = xs.min(), xs.max()
+        y_min, y_max = ys.min(), ys.max()
+
+        # Add padding
+        pad = 20
+        h_img, w_img = image.shape[:2]
+        x_min = max(0, x_min - pad)
+        y_min = max(0, y_min - pad)
+        x_max = min(w_img, x_max + pad)
+        y_max = min(h_img, y_max + pad)
+
+        # Crop region
+        region = image[y_min:y_max, x_min:x_max]
+
+        # Run YOLO on region
+        region_grains = self.detect(region, conf=conf, min_area=min_area)
+
+        # Adjust contours to full image coordinates
+        full_grains: list[GrainContour] = []
+        for grain in region_grains:
+            # Shift contour
+            shifted_contour = grain.contour.copy()
+            shifted_contour[:, :, 0] += x_min
+            shifted_contour[:, :, 1] += y_min
+
+            # Create mask in full image
+            full_mask = np.zeros((h_img, w_img), dtype=np.uint8)
+            # Draw the shifted contour
+            cv2.drawContours(full_mask, [shifted_contour], -1, 255, thickness=cv2.FILLED)
+
+            full_grains.append(GrainContour(contour=shifted_contour, mask=full_mask))
+
+        return full_grains
+
+
+def _is_touching_grain(grain: GrainContour, threshold: float = TOUCHING_THRESHOLD) -> bool:
+    """Check if a grain is likely touching/overlapping with others.
+
+    Uses bounding box aspect ratio and convexity as heuristics.
+
+    Parameters
+    ----------
+    grain : GrainContour
+        The grain to check.
+    threshold : float
+        Aspect ratio threshold. Higher means more likely touching.
+
+    Returns
+    -------
+    bool
+        True if the grain appears to be touching others.
+    """
+    # Check bounding box aspect ratio
+    x, y, w, h = cv2.boundingRect(grain.contour)
+    aspect_ratio = max(w, h) / max(min(w, h), 1)
+
+    # Check convexity (touching grains often have lower convexity)
+    area = cv2.contourArea(grain.contour)
+    hull = cv2.convexHull(grain.contour)
+    hull_area = cv2.contourArea(hull)
+    convexity = area / max(hull_area, 1)
+
+    # Heuristic: high aspect ratio or low convexity suggests touching
+    return aspect_ratio > threshold or convexity < 0.85
+
 
 def refine_with_yolo(
     image: np.ndarray,
@@ -172,9 +276,10 @@ def refine_with_yolo(
 ) -> list[GrainContour]:
     """Refine traditional detection results with YOLO segmentation.
 
-    This hybrid approach uses traditional contour detection as a base,
-    then applies YOLO segmentation to regions where grains are touching
-    or overlapping for more precise separation.
+    This hybrid approach:
+    1. Identifies grains that are likely touching/overlapping
+    2. Uses YOLO to re-segment those specific regions
+    3. Combines YOLO-refined regions with unaffected traditional grains
 
     Parameters
     ----------
@@ -197,25 +302,62 @@ def refine_with_yolo(
         logger.warning("YOLO not available; returning traditional results.")
         return traditional_grains
 
-    # Run YOLO on the full image
-    yolo_grains = yolo_detector.detect(image, min_area=min_area)
-
-    if not yolo_grains:
+    if not traditional_grains:
         return traditional_grains
 
-    # Strategy: Use YOLO results if they detect more grains (better separation)
-    # Otherwise fall back to traditional results
-    if len(yolo_grains) >= len(traditional_grains):
-        logger.info(
-            "YOLO refined detection: %d grains (traditional: %d)",
-            len(yolo_grains),
-            len(traditional_grains),
-        )
-        return yolo_grains
-    else:
-        logger.info(
-            "Traditional detection better: %d grains (YOLO: %d)",
-            len(traditional_grains),
-            len(yolo_grains),
-        )
+    # Identify touching grains that need YOLO refinement
+    touching_indices = []
+    for i, grain in enumerate(traditional_grains):
+        if _is_touching_grain(grain):
+            touching_indices.append(i)
+
+    if not touching_indices:
+        logger.info("No touching grains detected; using traditional results.")
         return traditional_grains
+
+    logger.info(
+        "Refining %d/%d grains with YOLO",
+        len(touching_indices),
+        len(traditional_grains),
+    )
+
+    # Collect regions that need refinement
+    refined_grains: list[GrainContour] = []
+    used_yolo = False
+
+    for i, grain in enumerate(traditional_grains):
+        if i not in touching_indices:
+            # Non-touching grain: keep traditional result
+            refined_grains.append(grain)
+            continue
+
+        # Touching grain: try YOLO refinement
+        # Create a mask for this grain's region
+        region_mask = grain.mask.copy()
+
+        # Run YOLO on this region
+        yolo_grains = yolo_detector.detect_in_region(
+            image, region_mask, conf=0.25, min_area=min_area
+        )
+
+        if len(yolo_grains) > 1:
+            # YOLO successfully split this region into multiple grains
+            logger.info(
+                "YOLO split grain %d into %d grains",
+                i,
+                len(yolo_grains),
+            )
+            refined_grains.extend(yolo_grains)
+            used_yolo = True
+        else:
+            # YOLO couldn't split; keep traditional result
+            refined_grains.append(grain)
+
+    if used_yolo:
+        logger.info(
+            "Hybrid detection: %d grains (was %d with traditional)",
+            len(refined_grains),
+            len(traditional_grains),
+        )
+
+    return refined_grains
