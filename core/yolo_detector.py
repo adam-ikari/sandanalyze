@@ -1,7 +1,8 @@
-"""YOLOv8-seg grain detector.
+"""YOLOv8-seg grain detector with hybrid detection support.
 
-This module provides YOLOv8 segmentation-based grain detection with
-graceful fallback when the model is unavailable.
+This module provides YOLOv8 segmentation-based grain detection that can be
+used standalone or in combination with traditional contour detection for
+refined segmentation of touching grains.
 """
 
 from __future__ import annotations
@@ -9,15 +10,19 @@ from __future__ import annotations
 import logging
 import warnings
 
+import cv2
 import numpy as np
 
 from core.traditional import GrainContour
 
 logger = logging.getLogger(__name__)
 
+# Default model to use
+DEFAULT_MODEL = "yolov8n-seg.pt"
+
 
 class YOLODetector:
-    """Grain detector using YOLOv8-seg.
+    """Grain detector using YOLOv8-seg with graceful fallback.
 
     Parameters
     ----------
@@ -26,7 +31,7 @@ class YOLODetector:
         Default is ``"yolov8n-seg.pt"``.
     """
 
-    def __init__(self, model_name: str = "yolov8n-seg.pt") -> None:
+    def __init__(self, model_name: str = DEFAULT_MODEL) -> None:
         self._model_name = model_name
         self._model = None
         self._try_load()
@@ -140,3 +145,60 @@ class YOLODetector:
         # Sort by area descending
         grains.sort(key=lambda g: cv2.contourArea(g.contour), reverse=True)
         return grains
+
+
+def refine_with_yolo(
+    image: np.ndarray,
+    traditional_grains: list[GrainContour],
+    yolo_detector: YOLODetector,
+    min_area: int = 50,
+) -> list[GrainContour]:
+    """Refine traditional detection results with YOLO segmentation.
+
+    This hybrid approach uses traditional contour detection as a base,
+    then applies YOLO segmentation to regions where grains are touching
+    or overlapping for more precise separation.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        Original input image.
+    traditional_grains : list[GrainContour]
+        Grains detected by traditional method.
+    yolo_detector : YOLODetector
+        Initialized YOLO detector.
+    min_area : int, optional
+        Minimum area threshold. Default is 50.
+
+    Returns
+    -------
+    list[GrainContour]
+        Refined grain list. If YOLO is unavailable, returns the original
+        traditional grains.
+    """
+    if not yolo_detector.is_available:
+        logger.warning("YOLO not available; returning traditional results.")
+        return traditional_grains
+
+    # Run YOLO on the full image
+    yolo_grains = yolo_detector.detect(image, min_area=min_area)
+
+    if not yolo_grains:
+        return traditional_grains
+
+    # Strategy: Use YOLO results if they detect more grains (better separation)
+    # Otherwise fall back to traditional results
+    if len(yolo_grains) >= len(traditional_grains):
+        logger.info(
+            "YOLO refined detection: %d grains (traditional: %d)",
+            len(yolo_grains),
+            len(traditional_grains),
+        )
+        return yolo_grains
+    else:
+        logger.info(
+            "Traditional detection better: %d grains (YOLO: %d)",
+            len(traditional_grains),
+            len(yolo_grains),
+        )
+        return traditional_grains

@@ -24,7 +24,7 @@ from core.exporter import export_csv as _export_csv
 from core.morphology import GrainMorphology, GrainStatistics, compute_morphology, compute_statistics
 from core.preprocessor import PreprocessConfig, preprocess
 from core.traditional import GrainContour, detect_grains
-from core.yolo_detector import YOLODetector
+from core.yolo_detector import YOLODetector, refine_with_yolo
 from gui.image_panel import ImagePanel
 from gui.result_panel import ResultPanel
 from gui.settings_panel import SettingsPanel
@@ -214,8 +214,21 @@ class SandAnalyzeApp(QMainWindow):
             mask = preprocess(self._original_image, self._config)
 
             # Detect grains using traditional method
-            self._grains = detect_grains(mask, min_area=self._config.min_area)
+            traditional_grains = detect_grains(mask, min_area=self._config.min_area)
             self._detection_method = "传统方法"
+
+            # Try YOLO refinement if available
+            if self._yolo_detector.is_available:
+                self._grains = refine_with_yolo(
+                    self._original_image,
+                    traditional_grains,
+                    self._yolo_detector,
+                    min_area=self._config.min_area,
+                )
+                if self._grains is not traditional_grains:
+                    self._detection_method = "混合方法(传统+YOLO)"
+            else:
+                self._grains = traditional_grains
 
             # Compute morphologies
             self._morphologies = [

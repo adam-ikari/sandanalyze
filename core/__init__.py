@@ -11,7 +11,7 @@ from core.morphology import (
 )
 from core.preprocessor import PreprocessConfig, preprocess
 from core.traditional import GrainContour, detect_grains
-from core.yolo_detector import YOLODetector
+from core.yolo_detector import YOLODetector, refine_with_yolo
 
 __all__ = [
     "PreprocessConfig",
@@ -19,6 +19,7 @@ __all__ = [
     "GrainContour",
     "detect_grains",
     "YOLODetector",
+    "refine_with_yolo",
     "GrainMorphology",
     "GrainStatistics",
     "compute_morphology",
