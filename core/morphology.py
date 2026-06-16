@@ -25,6 +25,44 @@ class GrainMorphology:
     feret_min: float
 
 
+# Zingg classification colors (BGR format for OpenCV)
+ZINGG_COLORS = {
+    "球状": (0, 255, 0),    # Green
+    "棒状": (0, 0, 255),    # Red
+    "片状": (255, 0, 0),    # Blue
+}
+
+
+def zingg_classify(aspect_ratio: float) -> str:
+    """Classify a grain using Zingg shape classification.
+
+    Args:
+        aspect_ratio: The aspect ratio of the grain (major_axis / minor_axis).
+
+    Returns:
+        One of: "球状" (spherical), "棒状" (rod-like), "片状" (flat).
+    """
+    if aspect_ratio < 1.5:
+        return "球状"
+    elif aspect_ratio < 2.5:
+        return "棒状"
+    else:
+        return "片状"
+
+
+def get_zingg_color(aspect_ratio: float) -> tuple[int, int, int]:
+    """Get the color for a Zingg classification.
+
+    Args:
+        aspect_ratio: The aspect ratio of the grain.
+
+    Returns:
+        BGR color tuple.
+    """
+    classification = zingg_classify(aspect_ratio)
+    return ZINGG_COLORS[classification]
+
+
 @dataclass
 class GrainStatistics:
     """Aggregate statistics across multiple sand grains."""
@@ -49,6 +87,7 @@ class GrainStatistics:
     convexity_std: float = 0.0
     convexity_median: float = 0.0
     zingg_counts: dict = field(default_factory=dict)
+    zingg_colors: dict = field(default_factory=dict)
     d_eq_values: List[float] = field(default_factory=list)
     circularity_values: List[float] = field(default_factory=list)
     sphericity_values: List[float] = field(default_factory=list)
@@ -182,6 +221,7 @@ def compute_statistics(morphologies: List[GrainMorphology]) -> GrainStatistics:
 
     # Zingg classification
     zingg_counts: dict[str, int] = {"球状": 0, "棒状": 0, "片状": 0}
+    zingg_colors: dict[str, tuple[int, int, int]] = field(default_factory=dict)
     for ar in aspect_ratios:
         if ar < 1.5:
             zingg_counts["球状"] += 1
@@ -189,6 +229,9 @@ def compute_statistics(morphologies: List[GrainMorphology]) -> GrainStatistics:
             zingg_counts["棒状"] += 1
         else:
             zingg_counts["片状"] += 1
+
+    # Per-grain Zingg colors
+    zingg_colors = {i: get_zingg_color(m.aspect_ratio) for i, m in enumerate(morphologies)}
 
     return GrainStatistics(
         count=len(morphologies),
@@ -211,6 +254,7 @@ def compute_statistics(morphologies: List[GrainMorphology]) -> GrainStatistics:
         convexity_std=conv_std,
         convexity_median=conv_median,
         zingg_counts=zingg_counts,
+        zingg_colors=zingg_colors,
         d_eq_values=d_eqs,
         circularity_values=circularities,
         sphericity_values=sphericities,

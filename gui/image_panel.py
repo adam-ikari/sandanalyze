@@ -21,6 +21,7 @@ class ImagePanel(QWidget):
         super().__init__(parent)
         self._image: np.ndarray | None = None
         self._grains: list = []
+        self._morphologies: list = []
         self._zoom: float = 1.0
         self._zoom_min: float = 0.1
         self._zoom_max: float = 5.0
@@ -52,20 +53,23 @@ class ImagePanel(QWidget):
         self._zoom = 1.0
         self._update_display()
 
-    def set_grains(self, grains: list) -> None:
+    def set_grains(self, grains: list, morphologies: list = None) -> None:
         """Set detected grains and overlay their contours on the image.
 
         Args:
             grains: List of grain objects with ``contour`` and optionally ``mask``
                 attributes (e.g., :class:`core.traditional.GrainContour`).
+            morphologies: Optional list of GrainMorphology objects for Zingg coloring.
         """
         self._grains = grains if grains is not None else []
+        self._morphologies = morphologies if morphologies is not None else []
         self._update_display()
 
     def clear(self) -> None:
         """Clear the display."""
         self._image = None
         self._grains = []
+        self._morphologies = []
         self._zoom = 1.0
         self._label.clear()
         self._label.setPixmap(QPixmap())
@@ -115,22 +119,35 @@ class ImagePanel(QWidget):
             for idx, grain in enumerate(self._grains):
                 contour = getattr(grain, "contour", None)
                 if contour is not None and len(contour) > 0:
-                    # Draw contour in green
-                    cv2.drawContours(display_image, [contour], -1, (0, 255, 0), 2)
-                    # Draw label in red at the contour centroid
+                    # Determine color based on Zingg classification
+                    color = (0, 255, 0)  # Default green
+                    if idx < len(self._morphologies):
+                        from core.morphology import get_zingg_color
+                        color = get_zingg_color(self._morphologies[idx].aspect_ratio)
+
+                    # Draw contour with classification color
+                    cv2.drawContours(display_image, [contour], -1, color, 2)
+
+                    # Draw label in white at the contour centroid
                     moments = cv2.moments(contour)
                     if moments["m00"] != 0:
                         cx = int(moments["m10"] / moments["m00"])
                         cy = int(moments["m01"] / moments["m00"])
+                        # Draw a small filled circle for better visibility
+                        cv2.circle(display_image, (cx, cy), 3, (255, 255, 255), -1)
                         cv2.putText(
                             display_image,
                             str(idx),
                             (cx - 5, cy + 5),
                             cv2.FONT_HERSHEY_SIMPLEX,
                             0.5,
-                            (0, 0, 255),
+                            (255, 255, 255),
                             2,
                         )
+
+            # Draw legend if morphologies are available
+            if self._morphologies:
+                self._draw_legend(display_image)
 
         pixmap = self._numpy_to_qpixmap(display_image)
 
@@ -237,3 +254,37 @@ class ImagePanel(QWidget):
                 if dist >= 0:
                     self.grain_clicked.emit(idx)
                     return
+
+    def _draw_legend(self, image: np.ndarray) -> None:
+        """Draw Zingg classification legend on the image.
+
+        Args:
+            image: The image to draw on (modified in-place).
+        """
+        from core.morphology import ZINGG_COLORS
+
+        h, w = image.shape[:2]
+        legend_x = w - 140
+        legend_y = h - 80
+        item_height = 20
+
+        # Background rectangle
+        cv2.rectangle(image, (legend_x - 10, legend_y - 25),
+                     (legend_x + 130, legend_y + len(ZINGG_COLORS) * item_height + 5),
+                     (40, 40, 40), -1)
+        cv2.rectangle(image, (legend_x - 10, legend_y - 25),
+                     (legend_x + 130, legend_y + len(ZINGG_COLORS) * item_height + 5),
+                     (200, 200, 200), 1)
+
+        # Title
+        cv2.putText(image, "Zingg分类", (legend_x, legend_y - 5),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+
+        # Legend items
+        for i, (label, color) in enumerate(ZINGG_COLORS.items()):
+            y = legend_y + i * item_height + 10
+            # Color box
+            cv2.rectangle(image, (legend_x, y - 10), (legend_x + 15, y + 5), color, -1)
+            # Label
+            cv2.putText(image, label, (legend_x + 20, y + 5),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)

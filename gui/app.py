@@ -231,7 +231,7 @@ class SandAnalyzeApp(QMainWindow):
         self._last_processing_time = elapsed
 
         # Update UI
-        self.image_panel.set_grains(self._grains)
+        self.image_panel.set_grains(self._grains, self._morphologies)
         self.result_panel.set_results(self._morphologies, self._statistics)
         self._update_statusbar()
 
@@ -277,7 +277,10 @@ class SandAnalyzeApp(QMainWindow):
         )
         if path:
             try:
-                _export_annotated_image(self._original_image, self._grains, path)
+                _export_annotated_image(
+                    self._original_image, self._grains, path,
+                    morphologies=self._morphologies
+                )
                 self._statusbar.showMessage(f"已导出标注图: {path}")
             except Exception as exc:
                 QMessageBox.critical(self, "导出错误", f"导出标注图失败:\n{exc}")

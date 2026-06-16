@@ -62,6 +62,7 @@ def export_annotated_image(
     path: str,
     color: tuple[int, int, int] = (0, 255, 0),
     thickness: int = 1,
+    morphologies: list[GrainMorphology] | None = None,
 ) -> None:
     """Export an annotated image with grain contours and labels.
 
@@ -77,11 +78,20 @@ def export_annotated_image(
         BGR color for contours, default is green.
     thickness : int, optional
         Thickness of contour lines.
+    morphologies : list[GrainMorphology] | None, optional
+        Optional list of morphologies for Zingg classification coloring.
     """
     annotated = image.copy()
 
     for idx, grain in enumerate(grains, start=1):
-        cv2.drawContours(annotated, [grain.contour], -1, color, thickness)
+        # Determine color based on Zingg classification if morphologies provided
+        if morphologies and idx - 1 < len(morphologies):
+            from core.morphology import get_zingg_color
+            contour_color = get_zingg_color(morphologies[idx - 1].aspect_ratio)
+        else:
+            contour_color = color
+
+        cv2.drawContours(annotated, [grain.contour], -1, contour_color, thickness)
 
         # Compute centroid for label placement
         moments = cv2.moments(grain.contour)
@@ -100,7 +110,7 @@ def export_annotated_image(
             (cx, cy),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
-            color,
+            (255, 255, 255),
             thickness,
         )
 
