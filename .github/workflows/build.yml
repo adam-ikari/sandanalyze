@@ -81,6 +81,18 @@ jobs:
       - name: Install PyInstaller
         run: uv pip install pyinstaller
 
+      - name: Download YOLO model
+        run: |
+          mkdir -p models
+          uv run python -c "from ultralytics import YOLO; YOLO('yolov8n-seg.pt')" 2>/dev/null || true
+          # Check if model was downloaded
+          if [ -f "$HOME/.ultralytics/models/yolov8n-seg.pt" ]; then
+            cp "$HOME/.ultralytics/models/yolov8n-seg.pt" models/
+            echo "YOLO model downloaded successfully"
+          else
+            echo "Warning: Could not download YOLO model"
+          fi
+
       - name: Build executable (Linux/macOS)
         if: runner.os != 'Windows'
         run: |

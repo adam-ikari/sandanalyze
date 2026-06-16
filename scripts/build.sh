@@ -76,6 +76,28 @@ if ! uv pip show pyinstaller &> /dev/null; then
     uv pip install pyinstaller
 fi
 
+# Download YOLO model if not present
+echo "Checking for YOLO model..."
+MODEL_DIR="${PROJECT_ROOT}/models"
+MODEL_FILE="${MODEL_DIR}/yolov8n-seg.pt"
+mkdir -p "${MODEL_DIR}"
+
+if [ ! -f "${MODEL_FILE}" ]; then
+    echo "Downloading YOLO model..."
+    uv run python -c "from ultralytics import YOLO; YOLO('yolov8n-seg.pt')" 2>/dev/null || true
+
+    # Check if model was downloaded to default location
+    DEFAULT_MODEL="${HOME}/.ultralytics/models/yolov8n-seg.pt"
+    if [ -f "${DEFAULT_MODEL}" ]; then
+        cp "${DEFAULT_MODEL}" "${MODEL_FILE}"
+        echo "Model downloaded to: ${MODEL_FILE}"
+    else
+        echo "Warning: Could not download YOLO model. Build will continue without it."
+    fi
+else
+    echo "YOLO model already exists: ${MODEL_FILE}"
+fi
+
 # Build executable
 echo "Building executable with PyInstaller..."
 uv run pyinstaller \
