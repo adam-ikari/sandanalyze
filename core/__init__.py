@@ -10,6 +10,7 @@ from core.morphology import (
     compute_statistics,
 )
 from core.preprocessor import PreprocessConfig, preprocess
+from core.model_manager import ensure_model_available, get_model_path
 from core.traditional import GrainContour, detect_grains
 from core.yolo_detector import YOLODetector, refine_with_yolo
 
@@ -20,6 +21,8 @@ __all__ = [
     "detect_grains",
     "YOLODetector",
     "refine_with_yolo",
+    "ensure_model_available",
+    "get_model_path",
     "GrainMorphology",
     "GrainStatistics",
     "compute_morphology",

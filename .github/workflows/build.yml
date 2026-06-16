@@ -89,6 +89,7 @@ jobs:
             --name sandanalyze \
             --add-data "core:core" \
             --add-data "gui:gui" \
+            --add-data "models:models" \
             --hidden-import PyQt6.sip \
             --hidden-import cv2 \
             --hidden-import numpy \
@@ -100,7 +101,7 @@ jobs:
       - name: Build executable (Windows)
         if: runner.os == 'Windows'
         run: |
-          uv run pyinstaller --onefile --name sandanalyze --add-data "core;core" --add-data "gui;gui" --hidden-import PyQt6.sip --hidden-import cv2 --hidden-import numpy --hidden-import matplotlib --hidden-import scipy --hidden-import ultralytics main.py
+          uv run pyinstaller --onefile --name sandanalyze --add-data "core;core" --add-data "gui;gui" --add-data "models;models" --hidden-import PyQt6.sip --hidden-import cv2 --hidden-import numpy --hidden-import matplotlib --hidden-import scipy --hidden-import ultralytics main.py
 
       - name: Package (Linux)
         if: matrix.os == 'ubuntu-latest'

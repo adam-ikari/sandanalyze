@@ -83,6 +83,7 @@ uv run pyinstaller \
     --name "${PROJECT_NAME}" \
     --add-data "core:core" \
     --add-data "gui:gui" \
+    --add-data "models:models" \
     --hidden-import PyQt6.sip \
     --hidden-import cv2 \
     --hidden-import numpy \

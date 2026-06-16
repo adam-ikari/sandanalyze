@@ -13,6 +13,7 @@ import warnings
 import cv2
 import numpy as np
 
+from core.model_manager import ensure_model_available, get_model_path
 from core.traditional import GrainContour
 
 logger = logging.getLogger(__name__)
@@ -41,8 +42,24 @@ class YOLODetector:
         try:
             from ultralytics import YOLO
 
-            self._model = YOLO(self._model_name)
-            logger.info("Loaded YOLO model: %s", self._model_name)
+            # First, try to find the model in our managed locations
+            model_path = get_model_path(self._model_name)
+
+            if model_path is not None:
+                # Use the bundled/cached model
+                self._model = YOLO(str(model_path))
+                logger.info("Loaded YOLO model from: %s", model_path)
+            else:
+                # Try to download or use default path
+                model_path = ensure_model_available(self._model_name)
+                if model_path is not None:
+                    self._model = YOLO(str(model_path))
+                    logger.info("Loaded YOLO model: %s", model_path)
+                else:
+                    # Last resort: let ultralytics handle it
+                    self._model = YOLO(self._model_name)
+                    logger.info("Loaded YOLO model (default): %s", self._model_name)
+
         except Exception as exc:  # noqa: BLE001
             self._model = None
             logger.warning(
