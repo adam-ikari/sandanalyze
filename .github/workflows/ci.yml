@@ -1,19 +1,44 @@
-name: Build & Package
+name: CI Verification
 
 on:
   push:
     branches: [main, master]
-    tags: ['v*']
   pull_request:
     branches: [main, master]
   workflow_dispatch:
 
-# Prevent concurrent builds on the same branch/tag
+# Prevent concurrent builds
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  lint:
+    name: Lint & Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Check code formatting (ruff)
+        run: |
+          uv pip install ruff
+          uv run ruff check . --select E,W,F,I
+        continue-on-error: true
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -41,7 +66,17 @@ jobs:
         run: uv sync --extra dev
 
       - name: Run tests
-        run: uv run pytest tests/ -v
+        run: uv run pytest tests/ -v --tb=short
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.os }}
+          path: |
+            .pytest_cache/
+            test-reports/
+          if-no-files-found: ignore
 
   build:
     name: Build (${{ matrix.target }})
@@ -102,20 +137,37 @@ jobs:
         run: |
           uv run pyinstaller --onefile --name sandanalyze --add-data "core;core" --add-data "gui;gui" --hidden-import PyQt6.sip --hidden-import cv2 --hidden-import numpy --hidden-import matplotlib --hidden-import scipy --hidden-import ultralytics main.py
 
+      - name: Verify executable exists
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+            if [ ! -f "dist/sandanalyze.exe" ]; then
+              echo "Error: Windows executable not found!"
+              exit 1
+            fi
+            echo "✓ Windows executable built successfully"
+          else
+            if [ ! -f "dist/sandanalyze" ]; then
+              echo "Error: Executable not found!"
+              exit 1
+            fi
+            echo "✓ Executable built successfully"
+          fi
+
       - name: Package (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
           cd dist
           chmod +x sandanalyze
           tar -czf sandanalyze-${{ matrix.target }}-${{ matrix.arch }}.tar.gz sandanalyze
-          cd ..
+          ls -lh sandanalyze-${{ matrix.target }}-${{ matrix.arch }}.tar.gz
 
       - name: Package (Windows)
         if: matrix.os == 'windows-latest'
         run: |
           cd dist
           Compress-Archive -Path sandanalyze.exe -DestinationPath sandanalyze-${{ matrix.target }}-${{ matrix.arch }}.zip
-          cd ..
+          Get-Item sandanalyze-${{ matrix.target }}-${{ matrix.arch }}.zip
 
       - name: Package (macOS)
         if: matrix.os == 'macos-latest'
@@ -123,9 +175,9 @@ jobs:
           cd dist
           chmod +x sandanalyze
           tar -czf sandanalyze-${{ matrix.target }}-${{ matrix.arch }}.tar.gz sandanalyze
-          cd ..
+          ls -lh sandanalyze-${{ matrix.target }}-${{ matrix.arch }}.tar.gz
 
-      - name: Upload artifacts
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: sandanalyze-${{ matrix.target }}-${{ matrix.arch }}
@@ -135,7 +187,7 @@ jobs:
           if-no-files-found: warn
 
   release:
-    name: Release
+    name: Create Release
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
@@ -152,7 +204,7 @@ jobs:
       - name: List downloaded artifacts
         run: ls -R artifacts/
 
-      - name: Create Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/**/*
