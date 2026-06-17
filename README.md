@@ -7,7 +7,7 @@
 - 🔬 **沙粒检测**：传统 OpenCV 轮廓检测 + YOLOv8-seg 对比
 - 📐 **多维度形态参数**：圆度、球度、长短轴比、凸度、Feret 直径等
 - 📊 **统计分析**：粒径分布、圆度-球度散点图、Zingg 分类
-- 🖥️ **桌面 GUI**：PyQt6 交互界面，支持缩放、点击查看、参数调节
+- 🌐 **Web 界面**：Streamlit 交互界面，浏览器中运行
 - 📤 **导出**：CSV 数据 + 标注图 PNG
 
 ## 安装
@@ -19,13 +19,20 @@ uv sync --extra dev
 ## 使用
 
 ```bash
+# 启动 Web 应用
 uv run python main.py
+
+# 或直接使用 streamlit
+streamlit run app.py
+
+# 指定端口
+uv run python main.py --server.port 8080
 ```
 
-1. 打开沙粒图像（菜单或拖拽）
-2. 调整预处理参数（右侧面板）
+1. 在侧边栏上传沙粒图像
+2. 调整预处理参数
 3. 点击"运行检测"
-4. 查看统计结果、图表和颗粒数据
+4. 查看统计摘要、颗粒数据表格和 Plotly 交互式图表
 5. 导出 CSV 或标注图
 
 ## 形态参数
@@ -45,6 +52,6 @@ uv run python main.py
 - Python 3.13
 - OpenCV（图像处理）
 - ultralytics / YOLOv8-seg（深度学习检测）
-- PyQt6（GUI）
-- matplotlib（图表）
+- Streamlit（Web UI）
+- Plotly（交互式图表）
 - numpy / scipy（数值计算）
