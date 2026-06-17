@@ -1,3 +1,15 @@
+# Data directories
+data/
+sand/
+
+# Model weights
+models/
+*.pt
+*.onnx
+
+# Training outputs
+runs/
+
 # Python-generated files
 __pycache__/
 *.py[oc]
