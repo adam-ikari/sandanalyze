@@ -1,0 +1,18 @@
+{
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true
+  },
+  "env": {
+    "ANTHROPIC_AUTH_TOKEN": "9d39941cf6077120769a82daf038c9e1:MTFlOWVlN2I3ZWU1Y2NjZDI1OTE4ZjEz",
+    "ANTHROPIC_BASE_URL": "https://maas-coding-api.cn-huabei-1.xf-yun.com/anthropic",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "xopkimik26",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "xopkimik26",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "xopkimik26",
+    "ANTHROPIC_MODEL": "xopkimik26"
+  },
+  "permissions": {
+    "allow": [],
+    "deny": []
+  },
+  "skipDangerousModePermissionPrompt": true
+}

@@ -1,57 +1,122 @@
-# SandAnalyze - 沙粒形态分析系统
+# SandAnalyze - Sand Grain Morphology Analysis System
 
-基于 OpenCV 传统图像处理和 YOLOv8-seg 的沙粒识别、形状分析和数量统计工具。
+A sand grain detection, shape analysis, and statistical counting tool based on traditional OpenCV image processing methods.
 
-## 功能
+## Features
 
-- 🔬 **沙粒检测**：传统 OpenCV 轮廓检测 + YOLOv8-seg 对比
-- 📐 **多维度形态参数**：圆度、球度、长短轴比、凸度、Feret 直径等
-- 📊 **统计分析**：粒径分布、圆度-球度散点图、Zingg 分类
-- 🌐 **Web 界面**：Streamlit 交互界面，浏览器中运行
-- 📤 **导出**：CSV 数据 + 标注图 PNG
+- **Grain Detection**: Traditional OpenCV contour detection with edge filtering and flocculation detection
+- **Multi-dimensional Morphology**: Circularity, sphericity, aspect ratio, convexity, Feret diameter, etc.
+- **Four-Class Classification**: Zingg shape classification (spherical, rod-like, discoidal) + flocculation detection
+- **Statistical Analysis**: Size distribution, circularity-sphericity scatter plots, classification distribution
+- **Web Interface**: Streamlit interactive interface, runs in browser
+- **Export**: CSV data, annotated PNG images, PDF reports
+- **Batch Processing**: Process multiple images in a directory with summary statistics
 
-## 安装
+## Installation
 
 ```bash
 uv sync --extra dev
 ```
 
-## 使用
+## Usage
 
 ```bash
-# 启动 Web 应用
+# Launch web application
 uv run python main.py
 
-# 或直接使用 streamlit
+# Or use streamlit directly
 streamlit run app.py
 
-# 指定端口
+# Specify port
 uv run python main.py --server.port 8080
 ```
 
-1. 在侧边栏上传沙粒图像
-2. 调整预处理参数
-3. 点击"运行检测"
-4. 查看统计摘要、颗粒数据表格和 Plotly 交互式图表
-5. 导出 CSV 或标注图
+1. Upload sand grain image in the sidebar
+2. Adjust preprocessing parameters (optional: enable auto-tune)
+3. Configure detection options (edge filtering, flocculation detection)
+4. Click "Run Detection"
+5. View statistical summary, grain data table, and Plotly interactive charts
+6. Export CSV, annotated image, or PDF report
 
-## 形态参数
+## Morphology Parameters
 
-| 参数 | 计算方法 | 地质意义 |
-|------|----------|----------|
-| 面积 (A) | 掩码像素数 | 粒径基础 |
-| 周长 (P) | 轮廓长度 | 磨蚀程度 |
-| 圆度 (Circularity) | 4πA/P² | 越接近1越圆 |
-| 等效粒径 (d_eq) | √(4A/π) | 等效圆直径 |
-| 长短轴比 (AR) | 长/短轴 | 扁平程度 |
-| 球度 (Sphericity) | 短/长轴 | 三维形状推断 |
-| 凸度 (Convexity) | 面积/凸包面积 | 表面凹凸程度 |
+| Parameter | Calculation Method | Geological Significance |
+|-----------|-------------------|------------------------|
+| Area (A) | Mask pixel count | Particle size basis |
+| Perimeter (P) | Contour length | Abrasion degree |
+| Circularity | 4pi*A/P^2 | Closer to 1 = more circular |
+| Equivalent Diameter (d_eq) | sqrt(4A/pi) | Equivalent circle diameter |
+| Aspect Ratio (AR) | Major/Minor axis | Flattening degree |
+| Sphericity | Minor/Major axis | 3D shape inference |
+| Convexity | Area/Convex hull area | Surface roughness |
 
-## 技术栈
+## Classification System
 
-- Python 3.13
-- OpenCV（图像处理）
-- ultralytics / YOLOv8-seg（深度学习检测）
-- Streamlit（Web UI）
-- Plotly（交互式图表）
-- numpy / scipy（数值计算）
+### Zingg Shape Classification
+
+| Class | Aspect Ratio Range | Color |
+|-------|-------------------|-------|
+| Spherical | < 1.5 | Green |
+| Rod-like | 1.5 - 2.5 | Red |
+| Discoidal | >= 2.5 | Blue |
+
+### Flocculation Detection
+
+Flocculation (grain clusters) are detected based on combined criteria:
+- Large area (configurable thresholds)
+- Low circularity
+- Low convexity
+- High aspect ratio
+
+Detected flocculation grains are colored yellow and take priority over Zingg classification.
+
+## Edge Filtering
+
+Grains touching or too close to the image border can be automatically excluded to avoid incomplete grain measurements. Configurable border margin in pixels.
+
+## Batch Processing
+
+Process all images in a directory:
+
+```python
+from core.batch import process_batch
+
+summary = process_batch(
+    input_dir="/path/to/images",
+    output_dir="/path/to/output",
+    border_margin=5,
+    generate_pdf=True,
+)
+
+print(f"Processed: {summary.total_images}")
+print(f"Success rate: {summary.success_rate:.1f}%")
+print(f"Total grains: {summary.total_grains}")
+```
+
+## Tech Stack
+
+- Python >= 3.10
+- OpenCV (image processing)
+- Streamlit (Web UI)
+- Plotly (interactive charts)
+- ReportLab (PDF generation)
+- numpy / scipy (numerical computing)
+
+## Project Structure
+
+```
+sandanalyze/
+├── app.py                 # Streamlit web application
+├── core/
+│   ├── __init__.py        # Package exports
+│   ├── batch.py           # Batch processing
+│   ├── classifier.py      # Zingg + flocculation classification
+│   ├── detector.py        # Grain detection with flocculation/edge filtering
+│   ├── exporter.py        # CSV and image export
+│   ├── morphology.py      # Morphological parameter computation
+│   ├── preprocessor.py    # Image preprocessing
+│   ├── report.py          # PDF report generation
+│   └── traditional.py     # Traditional contour-based detection
+├── tests/                 # Test suite
+└── pyproject.toml         # Project configuration
+```

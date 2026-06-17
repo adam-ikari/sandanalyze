@@ -31,17 +31,17 @@ class GrainMorphology:
 
 # Zingg classification colors (BGR format for OpenCV)
 ZINGG_COLORS = {
-    "球状": (0, 255, 0),    # Green
-    "棒状": (0, 0, 255),    # Red
-    "片状": (255, 0, 0),    # Blue
+    "spherical": (0, 255, 0),    # Green
+    "rod-like": (0, 0, 255),     # Red
+    "discoidal": (255, 0, 0),    # Blue
 }
 
 # Extended classification colors (BGR format for OpenCV)
 CLASSIFICATION_COLORS = {
-    "球状": (0, 255, 0),      # Green
-    "棒状": (0, 0, 255),      # Red
-    "片状": (255, 0, 0),      # Blue
-    "絮凝": (0, 255, 255),    # Yellow (BGR)
+    "spherical": (0, 255, 0),      # Green
+    "rod-like": (0, 0, 255),       # Red
+    "discoidal": (255, 0, 0),      # Blue
+    "flocculation": (0, 255, 255),  # Yellow (BGR)
 }
 
 
@@ -49,7 +49,7 @@ def get_classification_color(shape_class: str) -> tuple[int, int, int]:
     """Get the color for a classification.
 
     Args:
-        shape_class: One of "球状", "棒状", "片状", "絮凝".
+        shape_class: One of "spherical", "rod-like", "discoidal", "flocculation".
 
     Returns:
         BGR color tuple.
@@ -64,14 +64,14 @@ def zingg_classify(aspect_ratio: float) -> str:
         aspect_ratio: The aspect ratio of the grain (major_axis / minor_axis).
 
     Returns:
-        One of: "球状" (spherical), "棒状" (rod-like), "片状" (flat).
+        One of: "spherical", "rod-like", "discoidal".
     """
     if aspect_ratio < 1.5:
-        return "球状"
+        return "spherical"
     elif aspect_ratio < 2.5:
-        return "棒状"
+        return "rod-like"
     else:
-        return "片状"
+        return "discoidal"
 
 
 def get_zingg_color(aspect_ratio: float) -> tuple[int, int, int]:
@@ -111,7 +111,7 @@ class GrainStatistics:
     convexity_std: float = 0.0
     convexity_median: float = 0.0
     # Updated for four-class system
-    zingg_counts: dict = field(default_factory=lambda: {"球状": 0, "棒状": 0, "片状": 0, "絮凝": 0})
+    zingg_counts: dict = field(default_factory=lambda: {"spherical": 0, "rod-like": 0, "discoidal": 0, "flocculation": 0})
     zingg_colors: dict = field(default_factory=dict)
     d_eq_values: List[float] = field(default_factory=list)
     circularity_values: List[float] = field(default_factory=list)
@@ -248,26 +248,26 @@ def compute_statistics(morphologies: List[GrainMorphology]) -> GrainStatistics:
     conv_mean, conv_std, conv_median = _stats(convexities)
 
     # Four-class classification counts
-    zingg_counts: dict[str, int] = {"球状": 0, "棒状": 0, "片状": 0, "絮凝": 0}
+    zingg_counts: dict[str, int] = {"spherical": 0, "rod-like": 0, "discoidal": 0, "flocculation": 0}
     for m in morphologies:
         if m.is_flocculation:
-            zingg_counts["絮凝"] += 1
+            zingg_counts["flocculation"] += 1
         elif m.aspect_ratio < 1.5:
-            zingg_counts["球状"] += 1
+            zingg_counts["spherical"] += 1
         elif m.aspect_ratio < 2.5:
-            zingg_counts["棒状"] += 1
+            zingg_counts["rod-like"] += 1
         else:
-            zingg_counts["片状"] += 1
+            zingg_counts["discoidal"] += 1
 
     # Per-grain classification colors
     zingg_colors = {}
     for i, m in enumerate(morphologies):
         if m.is_flocculation:
-            zingg_colors[i] = CLASSIFICATION_COLORS["絮凝"]
+            zingg_colors[i] = CLASSIFICATION_COLORS["flocculation"]
         else:
             zingg_colors[i] = get_zingg_color(m.aspect_ratio)
 
-    flocculation_count = zingg_counts["絮凝"]
+    flocculation_count = zingg_counts["flocculation"]
     flocculation_ratio = flocculation_count / len(morphologies) if morphologies else 0.0
 
     return GrainStatistics(

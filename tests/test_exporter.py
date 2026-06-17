@@ -89,7 +89,7 @@ class TestExportCSV:
 
             assert len(rows) == 2, f"Expected 2 rows, got {len(rows)}"
 
-            # Verify header columns
+            # Verify header columns include new v2.0 fields
             expected_fields = [
                 "grain_id",
                 "area",
@@ -103,6 +103,9 @@ class TestExportCSV:
                 "convexity",
                 "feret_max",
                 "feret_min",
+                "shape_class",
+                "is_flocculation",
+                "confidence",
             ]
             assert reader.fieldnames == expected_fields
 
@@ -111,6 +114,10 @@ class TestExportCSV:
             assert float(rows[0]["area"]) == pytest.approx(100.0, rel=1e-4)
             assert float(rows[0]["circularity"]) == pytest.approx(0.785398, rel=1e-6)
             assert float(rows[0]["sphericity"]) == pytest.approx(0.833333, rel=1e-6)
+            # Default values for new fields
+            assert rows[0]["shape_class"] == ""
+            assert rows[0]["is_flocculation"] == "False"
+            assert float(rows[0]["confidence"]) == pytest.approx(0.0, rel=1e-4)
 
             # Verify second row data
             assert rows[1]["grain_id"] == "2"
@@ -135,6 +142,9 @@ class TestExportCSV:
 
             assert len(rows) == 0
             assert "grain_id" in reader.fieldnames
+            assert "shape_class" in reader.fieldnames
+            assert "is_flocculation" in reader.fieldnames
+            assert "confidence" in reader.fieldnames
         finally:
             os.unlink(tmp_path)
 
@@ -201,18 +211,38 @@ class TestExportAnnotatedImage:
         finally:
             os.unlink(tmp_path)
 
-    def test_empty_grains_list(self):
-        """Test that empty grains list still produces a valid image."""
+    def test_classification_coloring(self):
+        """Test that annotated image uses classification colors."""
+        grains = _make_sample_grains()
         image = np.zeros((50, 50, 3), dtype=np.uint8)
+
+        # Create morphologies with different classifications
+        morphologies = [
+            GrainMorphology(
+                area=100.0, perimeter=40.0, circularity=0.785, d_eq=11.28,
+                major_axis=12.0, minor_axis=10.0, aspect_ratio=1.2,
+                sphericity=0.833, convexity=0.95, feret_max=13.0, feret_min=9.0,
+                shape_class="spherical", is_flocculation=False, confidence=0.95,
+            ),
+            GrainMorphology(
+                area=200.0, perimeter=60.0, circularity=0.698, d_eq=15.95,
+                major_axis=20.0, minor_axis=8.0, aspect_ratio=2.5,
+                sphericity=0.4, convexity=0.88, feret_max=22.0, feret_min=7.0,
+                shape_class="flocculation", is_flocculation=True, confidence=0.88,
+            ),
+        ]
 
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             tmp_path = tmp.name
 
         try:
-            export_annotated_image(image, [], tmp_path)
+            export_annotated_image(
+                image, grains, tmp_path, morphologies=morphologies
+            )
 
             loaded = cv2.imread(tmp_path)
             assert loaded is not None
-            assert loaded.shape == image.shape
+            # Image should have colored contours (not all black)
+            assert np.any(loaded > 0), "Image is still all black, contours not drawn"
         finally:
             os.unlink(tmp_path)

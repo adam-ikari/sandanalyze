@@ -32,6 +32,9 @@ def export_csv(morphologies: list[GrainMorphology], path: str) -> None:
         "convexity",
         "feret_max",
         "feret_min",
+        "shape_class",
+        "is_flocculation",
+        "confidence",
     ]
 
     with open(path, "w", newline="", encoding="utf-8") as f:
@@ -52,6 +55,9 @@ def export_csv(morphologies: list[GrainMorphology], path: str) -> None:
                     "convexity": round(morph.convexity, 6),
                     "feret_max": round(morph.feret_max, 4),
                     "feret_min": round(morph.feret_min, 4),
+                    "shape_class": morph.shape_class,
+                    "is_flocculation": morph.is_flocculation,
+                    "confidence": round(morph.confidence, 4),
                 }
             )
 
@@ -79,15 +85,16 @@ def export_annotated_image(
     thickness : int, optional
         Thickness of contour lines.
     morphologies : list[GrainMorphology] | None, optional
-        Optional list of morphologies for Zingg classification coloring.
+        Optional list of morphologies for classification coloring.
     """
     annotated = image.copy()
 
     for idx, grain in enumerate(grains, start=1):
-        # Determine color based on Zingg classification if morphologies provided
+        # Determine color based on classification if morphologies provided
         if morphologies and idx - 1 < len(morphologies):
-            from core.morphology import get_zingg_color
-            contour_color = get_zingg_color(morphologies[idx - 1].aspect_ratio)
+            from core.morphology import get_classification_color
+            morph = morphologies[idx - 1]
+            contour_color = get_classification_color(morph.shape_class)
         else:
             contour_color = color
 

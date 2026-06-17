@@ -125,21 +125,21 @@ def test_zingg_classification():
     size = 200
     morphologies = []
 
-    # Sphere-like (球状): aspect_ratio < 1.5
+    # Spherical: aspect_ratio < 1.5
     mask1 = np.zeros((size, size), dtype=np.uint8)
     cv2.circle(mask1, (size // 2, size // 2), 40, 255, -1)
     contour1 = _find_contour(mask1)
     morph1 = compute_morphology(contour1, mask1)
     morphologies.append(morph1)
 
-    # Rod-like (棒状): 1.5 <= aspect_ratio < 2.5
+    # Rod-like: 1.5 <= aspect_ratio < 2.5
     mask2 = np.zeros((size, size), dtype=np.uint8)
     cv2.ellipse(mask2, (size // 2, size // 2), (50, 25), 0, 0, 360, 255, -1)
     contour2 = _find_contour(mask2)
     morph2 = compute_morphology(contour2, mask2)
     morphologies.append(morph2)
 
-    # Sheet-like (片状): aspect_ratio >= 2.5
+    # Discoidal: aspect_ratio >= 2.5
     mask3 = np.zeros((size, size), dtype=np.uint8)
     cv2.ellipse(mask3, (size // 2, size // 2), (80, 20), 0, 0, 360, 255, -1)
     contour3 = _find_contour(mask3)
@@ -148,6 +148,6 @@ def test_zingg_classification():
 
     stats = compute_statistics(morphologies)
 
-    assert stats.zingg_counts["球状"] == 1
-    assert stats.zingg_counts["棒状"] == 1
-    assert stats.zingg_counts["片状"] == 1
+    assert stats.zingg_counts["spherical"] == 1
+    assert stats.zingg_counts["rod-like"] == 1
+    assert stats.zingg_counts["discoidal"] == 1

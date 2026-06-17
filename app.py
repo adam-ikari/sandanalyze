@@ -15,22 +15,25 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
+from core.classifier import classify_grain
+from core.detector import detect_grains as detect_grains_v2, FlocculationConfig
 from core.morphology import (
     GrainMorphology,
     GrainStatistics,
     compute_morphology,
     compute_statistics,
-    get_zingg_color,
-    ZINGG_COLORS,
+    get_classification_color,
+    CLASSIFICATION_COLORS,
 )
-from core.preprocessor import PreprocessConfig, preprocess
+from core.preprocessor import PreprocessConfig, preprocess, auto_tune_params
 from core.traditional import GrainContour, detect_grains
-from core.yolo_detector import YOLODetector, refine_with_yolo
+from core.report import generate_pdf_report
+from core.exporter import export_csv, export_annotated_image
 
 # ── Page config ──────────────────────────────────────────────────────────────
 
 st.set_page_config(
-    page_title="SandAnalyze - 沙粒形态分析系统",
+    page_title="SandAnalyze - Sand Grain Morphology Analysis",
     page_icon="🔬",
     layout="wide",
 )
@@ -56,17 +59,19 @@ DEFAULTS = {
     "morphologies": [],
     "statistics": None,
     "config": PreprocessConfig(),
-    "detection_method": "传统方法",
+    "detection_method": "traditional",
     "last_processing_time": 0.0,
-    "yolo_detector": None,
+    "use_edge_filter": True,
+    "border_margin": 5,
+    "use_flocculation": True,
+    "floc_config": FlocculationConfig(),
+    "use_auto_tune": False,
 }
 
 for key, default in DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = default
 
-if st.session_state.yolo_detector is None:
-    st.session_state.yolo_detector = YOLODetector()
 
 # ── Helper: image overlay ────────────────────────────────────────────────────
 
@@ -86,7 +91,7 @@ def _overlay_grains(
 
         color = (0, 255, 0)
         if idx < len(morphologies):
-            color = get_zingg_color(morphologies[idx].aspect_ratio)
+            color = get_classification_color(morphologies[idx].shape_class)
 
         cv2.drawContours(display, [contour], -1, color, 2)
 
@@ -104,17 +109,17 @@ def _overlay_grains(
 
 
 def _draw_legend(image: np.ndarray) -> np.ndarray:
-    """Draw Zingg classification legend on the image."""
+    """Draw classification legend on the image."""
     h, w = image.shape[:2]
-    lx, ly = w - 140, h - 80
+    lx, ly = w - 160, h - 100
     ih = 20
-    items = list(ZINGG_COLORS.items())
+    items = list(CLASSIFICATION_COLORS.items())
 
     cv2.rectangle(image, (lx - 10, ly - 25),
-                  (lx + 130, ly + len(items) * ih + 5), (40, 40, 40), -1)
+                  (lx + 150, ly + len(items) * ih + 5), (40, 40, 40), -1)
     cv2.rectangle(image, (lx - 10, ly - 25),
-                  (lx + 130, ly + len(items) * ih + 5), (200, 200, 200), 1)
-    cv2.putText(image, "Zingg分类", (lx, ly - 5),
+                  (lx + 150, ly + len(items) * ih + 5), (200, 200, 200), 1)
+    cv2.putText(image, "Classification", (lx, ly - 5),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
     for i, (label, color) in enumerate(items):
@@ -167,7 +172,8 @@ def _make_size_histogram(stats: GrainStatistics) -> go.Figure:
         )]
     )
     fig.update_layout(
-        title="粒径分布", xaxis_title="等效粒径 (d_eq)", yaxis_title="频数",
+        title="Size Distribution", xaxis_title="Equivalent Diameter (d_eq)",
+        yaxis_title="Frequency",
         showlegend=False, margin=dict(l=40, r=20, t=40, b=40),
         template="plotly_white",
     )
@@ -183,25 +189,33 @@ def _make_scatter(stats: GrainStatistics) -> go.Figure:
         )]
     )
     fig.update_layout(
-        title="圆度 vs 球度", xaxis_title="圆度", yaxis_title="球度",
+        title="Circularity vs Sphericity", xaxis_title="Circularity",
+        yaxis_title="Sphericity",
         margin=dict(l=40, r=20, t=40, b=40), template="plotly_white",
     )
     return fig
 
 
-def _make_zingg_pie(stats: GrainStatistics) -> go.Figure:
+def _make_classification_pie(stats: GrainStatistics) -> go.Figure:
     labels = list(stats.zingg_counts.keys())
     values = list(stats.zingg_counts.values())
-    colors = ["#99ff99", "#66b3ff", "#ff9999"]
+    color_map = {
+        "spherical": "#99ff99",
+        "rod-like": "#66b3ff",
+        "discoidal": "#ff9999",
+        "flocculation": "#ffcc99",
+    }
+    colors = [color_map.get(l, "#cccccc") for l in labels]
     fig = go.Figure(
         data=[go.Pie(
             labels=labels, values=values,
-            marker=dict(colors=colors[:len(labels)]),
+            marker=dict(colors=colors),
             textposition="inside", textinfo="percent+label",
         )]
     )
     fig.update_layout(
-        title="Zingg分类", margin=dict(l=20, r=20, t=40, b=20),
+        title="Classification Distribution",
+        margin=dict(l=20, r=20, t=40, b=20),
         template="plotly_white",
     )
     return fig
@@ -213,9 +227,9 @@ with st.sidebar:
     st.header("🔬 SandAnalyze")
 
     # ── Image upload ───────────────────────────────────────────────────────
-    with st.expander("📷 图像加载", expanded=True):
+    with st.expander("📷 Image Upload", expanded=True):
         uploaded_file = st.file_uploader(
-            "选择沙粒图像",
+            "Select sand grain image",
             type=["jpg", "jpeg", "png", "bmp", "tif", "tiff"],
             label_visibility="collapsed",
         )
@@ -227,41 +241,42 @@ with st.sidebar:
                 st.session_state.grains = []
                 st.session_state.morphologies = []
                 st.session_state.statistics = None
-                st.session_state.detection_method = "传统方法"
+                st.session_state.detection_method = "traditional"
                 st.success(f"✓ {uploaded_file.name}")
             else:
-                st.error("无法读取图像文件")
+                st.error("Failed to read image file")
 
     # ── Preprocessing params ───────────────────────────────────────────────
-    with st.expander("⚙️ 预处理参数", expanded=False):
+    with st.expander("⚙️ Preprocessing Parameters", expanded=False):
         config = st.session_state.config
 
         col_a, col_b = st.columns(2)
         with col_a:
             blur_kernel = st.number_input(
-                "模糊核大小", min_value=1, max_value=31,
+                "Blur Kernel", min_value=1, max_value=31,
                 value=config.blur_kernel, step=2,
             )
             adaptive_block = st.number_input(
-                "自适应块大小", min_value=3, max_value=99,
+                "Adaptive Block Size", min_value=3, max_value=99,
                 value=config.adaptive_block_size, step=2,
             )
             adaptive_c = st.number_input(
-                "自适应常数 C", min_value=-10, max_value=20,
+                "Adaptive Constant C", min_value=-10, max_value=20,
                 value=config.adaptive_c, step=1,
             )
         with col_b:
             morph_kernel = st.number_input(
-                "形态学核大小", min_value=1, max_value=21,
+                "Morphology Kernel", min_value=1, max_value=21,
                 value=config.morph_kernel_size, step=2,
             )
             min_area = st.number_input(
-                "最小面积", min_value=1, max_value=10000,
+                "Min Area", min_value=1, max_value=10000,
                 value=config.min_area, step=1,
             )
 
-        use_clahe = st.checkbox("CLAHE 增强", value=config.use_clahe)
-        use_watershed = st.checkbox("分水岭分割", value=config.use_watershed)
+        use_clahe = st.checkbox("CLAHE Enhancement", value=config.use_clahe)
+        use_watershed = st.checkbox("Watershed Segmentation", value=config.use_watershed)
+        use_auto_tune = st.checkbox("Auto-Tune Parameters", value=False)
 
         st.session_state.config = PreprocessConfig(
             blur_kernel=blur_kernel,
@@ -272,56 +287,83 @@ with st.sidebar:
             use_clahe=use_clahe,
             use_watershed=use_watershed,
         )
+        st.session_state.use_auto_tune = use_auto_tune
 
-    # ── YOLO ───────────────────────────────────────────────────────────────
-    with st.expander("🤖 YOLO 设置", expanded=False):
-        yolo_available = st.session_state.yolo_detector.is_available
-        use_yolo = st.checkbox(
-            "YOLO精细分割",
-            value=yolo_available,
-            disabled=not yolo_available,
-            help="使用YOLOv8-seg进行精细分割" if yolo_available else "YOLO模型不可用",
+    # ── Detection options ──────────────────────────────────────────────────
+    with st.expander("🔍 Detection Options", expanded=False):
+        use_edge_filter = st.checkbox(
+            "Edge Filtering", value=st.session_state.use_edge_filter,
+            help="Exclude grains touching image borders"
+        )
+        border_margin = st.number_input(
+            "Border Margin (px)", min_value=0, max_value=50,
+            value=st.session_state.border_margin, step=1,
+        )
+        use_flocculation = st.checkbox(
+            "Flocculation Detection", value=st.session_state.use_flocculation,
+            help="Detect and classify grain clusters"
         )
 
+        st.session_state.use_edge_filter = use_edge_filter
+        st.session_state.border_margin = border_margin
+        st.session_state.use_flocculation = use_flocculation
+
     # ── Run button ─────────────────────────────────────────────────────────
-    if st.button("🔍 运行检测", type="primary", width="stretch"):
+    if st.button("🔍 Run Detection", type="primary", width="stretch"):
         if st.session_state.original_image is None:
-            st.warning("请先加载图像")
+            st.warning("Please upload an image first")
         else:
             start = time.time()
             try:
-                mask = preprocess(
-                    st.session_state.original_image, st.session_state.config,
-                )
-                traditional = detect_grains(
-                    mask, min_area=st.session_state.config.min_area,
-                )
-                st.session_state.detection_method = "传统方法"
+                image = st.session_state.original_image
+                config = st.session_state.config
 
-                if yolo_available and use_yolo:
-                    refined = refine_with_yolo(
-                        st.session_state.original_image, traditional,
-                        st.session_state.yolo_detector,
-                        min_area=st.session_state.config.min_area,
+                # Auto-tune if enabled
+                if st.session_state.use_auto_tune:
+                    config = auto_tune_params(image)
+                    st.session_state.config = config
+                    st.info(f"Auto-tuned: blur={config.blur_kernel}, "
+                            f"block={config.adaptive_block_size}")
+
+                mask = preprocess(image, config)
+
+                # Use v2 detector with flocculation and edge filtering
+                results = detect_grains_v2(
+                    mask,
+                    image_shape=image.shape,
+                    min_area=config.min_area,
+                    border_margin=st.session_state.border_margin if use_edge_filter else 0,
+                    floc_config=st.session_state.floc_config if use_flocculation else None,
+                )
+
+                # Filter out edge grains if enabled
+                if use_edge_filter:
+                    results = [r for r in results if not r.is_edge]
+
+                st.session_state.detection_method = "traditional"
+
+                # Convert DetectionResult to GrainContour + compute morphology
+                from core.traditional import GrainContour
+                grains = []
+                morphologies = []
+                for r in results:
+                    gc = GrainContour(contour=r.contour, mask=r.mask)
+                    grains.append(gc)
+                    morph = compute_morphology(r.contour, r.mask)
+                    # Classify
+                    morph.shape_class = classify_grain(
+                        morph.aspect_ratio, r.is_flocculation
                     )
-                    if refined is not traditional:
-                        st.session_state.grains = refined
-                        st.session_state.detection_method = "混合方法(传统+YOLO)"
-                    else:
-                        st.session_state.grains = traditional
-                else:
-                    st.session_state.grains = traditional
+                    morph.is_flocculation = r.is_flocculation
+                    morph.confidence = 0.9 if r.is_flocculation else 0.95
+                    morphologies.append(morph)
 
-                st.session_state.morphologies = [
-                    compute_morphology(g.contour, g.mask)
-                    for g in st.session_state.grains
-                ]
-                st.session_state.statistics = compute_statistics(
-                    st.session_state.morphologies,
-                )
+                st.session_state.grains = grains
+                st.session_state.morphologies = morphologies
+                st.session_state.statistics = compute_statistics(morphologies)
                 st.session_state.last_processing_time = time.time() - start
             except Exception as exc:
-                st.error(f"检测错误: {exc}")
+                st.error(f"Detection error: {exc}")
 
     # ── Export ─────────────────────────────────────────────────────────────
     morphs = st.session_state.morphologies
@@ -334,6 +376,7 @@ with st.sidebar:
             "grain_id", "area", "perimeter", "circularity", "d_eq",
             "major_axis", "minor_axis", "aspect_ratio", "sphericity",
             "convexity", "feret_max", "feret_min",
+            "shape_class", "is_flocculation", "confidence",
         ]
         csv_buf = io.StringIO()
         writer = csv.DictWriter(csv_buf, fieldnames=fieldnames)
@@ -352,9 +395,12 @@ with st.sidebar:
                 "convexity": round(m.convexity, 6),
                 "feret_max": round(m.feret_max, 4),
                 "feret_min": round(m.feret_min, 4),
+                "shape_class": m.shape_class,
+                "is_flocculation": m.is_flocculation,
+                "confidence": round(m.confidence, 4),
             })
         st.download_button(
-            "📊 导出 CSV", data=csv_buf.getvalue(),
+            "📊 Export CSV", data=csv_buf.getvalue(),
             file_name="sand_analysis.csv", mime="text/csv",
             width="stretch",
         )
@@ -368,7 +414,7 @@ with st.sidebar:
                     continue
                 color = (0, 255, 0)
                 if idx - 1 < len(morphs):
-                    color = get_zingg_color(morphs[idx - 1].aspect_ratio)
+                    color = get_classification_color(morphs[idx - 1].shape_class)
                 cv2.drawContours(annotated, [contour], -1, color, 2)
                 moments = cv2.moments(contour)
                 if moments["m00"] != 0:
@@ -382,10 +428,39 @@ with st.sidebar:
 
             _, png_buf = cv2.imencode(".png", annotated)
             st.download_button(
-                "🖼️ 导出标注图", data=png_buf.tobytes(),
+                "🖼️ Export Annotated Image", data=png_buf.tobytes(),
                 file_name="sand_annotated.png", mime="image/png",
                 width="stretch",
             )
+
+        # PDF export
+        if st.session_state.original_image is not None:
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                annotated_path = tmp.name
+            cv2.imwrite(annotated_path, annotated)
+
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                pdf_path = tmp.name
+            try:
+                generate_pdf_report(
+                    annotated_path, morphs, st.session_state.statistics, pdf_path,
+                    annotated_image_path=annotated_path,
+                )
+                with open(pdf_path, "rb") as f:
+                    pdf_bytes = f.read()
+                st.download_button(
+                    "📄 Export PDF Report", data=pdf_bytes,
+                    file_name="sand_analysis_report.pdf", mime="application/pdf",
+                    width="stretch",
+                )
+            except Exception as exc:
+                st.error(f"PDF generation failed: {exc}")
+            finally:
+                import os
+                for p in [annotated_path, pdf_path]:
+                    if os.path.exists(p):
+                        os.unlink(p)
 
 # ── Main area ────────────────────────────────────────────────────────────────
 
@@ -397,9 +472,9 @@ morphs = st.session_state.morphologies
 if stats is not None:
     count = stats.count
     elapsed = st.session_state.last_processing_time
-    status_text = f"方法: {method} | 颗粒数: {count} | 处理时间: {elapsed:.2f}s"
+    status_text = f"Method: {method} | Grains: {count} | Time: {elapsed:.2f}s"
 else:
-    status_text = f"方法: {method} | 颗粒数: 0 | 请加载图像并运行检测"
+    status_text = f"Method: {method} | Grains: 0 | Please upload image and run detection"
 
 st.caption(status_text)
 
@@ -433,34 +508,40 @@ with col_img:
             },
         )
     else:
-        st.info("👈 请在侧边栏上传沙粒图像，然后点击「运行检测」")
+        st.info("👈 Please upload a sand grain image in the sidebar, then click 'Run Detection'")
 
 with col_res:
-    tab1, tab2, tab3 = st.tabs(["📊 统计摘要", "📋 颗粒数据", "📈 图表"])
+    tab1, tab2, tab3 = st.tabs(["📊 Summary", "📋 Grain Data", "📈 Charts"])
 
     # ── Summary tab ────────────────────────────────────────────────────────
     with tab1:
         if stats is not None:
             col_a, col_b = st.columns(2)
             with col_a:
-                st.metric("颗粒数量", stats.count)
-                st.metric("平均圆度", f"{stats.circularity_mean:.4f}")
-                st.metric("平均球度", f"{stats.sphericity_mean:.4f}")
+                st.metric("Grain Count", stats.count)
+                st.metric("Mean Circularity", f"{stats.circularity_mean:.4f}")
+                st.metric("Mean Sphericity", f"{stats.sphericity_mean:.4f}")
             with col_b:
-                st.metric("平均等效粒径", f"{stats.d_eq_mean:.4f}")
-                st.metric("平均长短轴比", f"{stats.aspect_ratio_mean:.4f}")
-                st.metric("平均凸度", f"{stats.convexity_mean:.4f}")
+                st.metric("Mean Equivalent Diameter", f"{stats.d_eq_mean:.4f}")
+                st.metric("Mean Aspect Ratio", f"{stats.aspect_ratio_mean:.4f}")
+                st.metric("Mean Convexity", f"{stats.convexity_mean:.4f}")
 
             st.divider()
-            st.caption("Zingg 分类")
+            st.caption("Classification Summary")
             if stats.zingg_counts:
                 parts = []
                 for key, cnt in stats.zingg_counts.items():
                     pct = cnt / stats.count * 100 if stats.count > 0 else 0
                     parts.append(f"**{key}**: {cnt} ({pct:.1f}%)")
                 st.markdown(" | ".join(parts))
+
+            if stats.flocculation_count > 0:
+                st.divider()
+                st.caption("Flocculation")
+                st.metric("Flocculation Count", stats.flocculation_count)
+                st.metric("Flocculation Ratio", f"{stats.flocculation_ratio:.2%}")
         else:
-            st.info("请先运行检测")
+            st.info("Please run detection first")
 
     # ── Table tab ──────────────────────────────────────────────────────────
     with tab2:
@@ -469,18 +550,20 @@ with col_res:
             for i, g in enumerate(morphs):
                 rows.append({
                     "ID": i + 1,
-                    "面积": f"{g.area:.2f}",
-                    "周长": f"{g.perimeter:.2f}",
-                    "圆度": f"{g.circularity:.4f}",
-                    "等效粒径": f"{g.d_eq:.4f}",
-                    "长短轴比": f"{g.aspect_ratio:.4f}",
-                    "球度": f"{g.sphericity:.4f}",
-                    "凸度": f"{g.convexity:.4f}",
+                    "Area": f"{g.area:.2f}",
+                    "Perimeter": f"{g.perimeter:.2f}",
+                    "Circularity": f"{g.circularity:.4f}",
+                    "d_eq": f"{g.d_eq:.4f}",
+                    "Aspect Ratio": f"{g.aspect_ratio:.4f}",
+                    "Sphericity": f"{g.sphericity:.4f}",
+                    "Convexity": f"{g.convexity:.4f}",
+                    "Class": g.shape_class,
+                    "Floc": "Yes" if g.is_flocculation else "No",
                 })
             st.dataframe(rows, width="stretch", hide_index=True,
                          height=420)
         else:
-            st.info("请先运行检测")
+            st.info("Please run detection first")
 
     # ── Charts tab ─────────────────────────────────────────────────────────
     with tab3:
@@ -492,7 +575,7 @@ with col_res:
                 _make_scatter(stats), width="stretch",
             )
             st.plotly_chart(
-                _make_zingg_pie(stats), width="stretch",
+                _make_classification_pie(stats), width="stretch",
             )
         else:
-            st.info("请先运行检测")
+            st.info("Please run detection first")
