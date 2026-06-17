@@ -23,6 +23,10 @@ class GrainMorphology:
     convexity: float
     feret_max: float
     feret_min: float
+    # New fields for v2.0
+    is_flocculation: bool = False
+    shape_class: str = ""
+    confidence: float = 0.0
 
 
 # Zingg classification colors (BGR format for OpenCV)
@@ -31,6 +35,26 @@ ZINGG_COLORS = {
     "棒状": (0, 0, 255),    # Red
     "片状": (255, 0, 0),    # Blue
 }
+
+# Extended classification colors (BGR format for OpenCV)
+CLASSIFICATION_COLORS = {
+    "球状": (0, 255, 0),      # Green
+    "棒状": (0, 0, 255),      # Red
+    "片状": (255, 0, 0),      # Blue
+    "絮凝": (0, 255, 255),    # Yellow (BGR)
+}
+
+
+def get_classification_color(shape_class: str) -> tuple[int, int, int]:
+    """Get the color for a classification.
+
+    Args:
+        shape_class: One of "球状", "棒状", "片状", "絮凝".
+
+    Returns:
+        BGR color tuple.
+    """
+    return CLASSIFICATION_COLORS.get(shape_class, (128, 128, 128))
 
 
 def zingg_classify(aspect_ratio: float) -> str:
@@ -86,11 +110,15 @@ class GrainStatistics:
     convexity_mean: float = 0.0
     convexity_std: float = 0.0
     convexity_median: float = 0.0
-    zingg_counts: dict = field(default_factory=dict)
+    # Updated for four-class system
+    zingg_counts: dict = field(default_factory=lambda: {"球状": 0, "棒状": 0, "片状": 0, "絮凝": 0})
     zingg_colors: dict = field(default_factory=dict)
     d_eq_values: List[float] = field(default_factory=list)
     circularity_values: List[float] = field(default_factory=list)
     sphericity_values: List[float] = field(default_factory=list)
+    # New: flocculation stats
+    flocculation_count: int = 0
+    flocculation_ratio: float = 0.0
 
 
 def _feret_diameters(contour: np.ndarray) -> tuple[float, float]:
@@ -219,19 +247,28 @@ def compute_statistics(morphologies: List[GrainMorphology]) -> GrainStatistics:
     sph_mean, sph_std, sph_median = _stats(sphericities)
     conv_mean, conv_std, conv_median = _stats(convexities)
 
-    # Zingg classification
-    zingg_counts: dict[str, int] = {"球状": 0, "棒状": 0, "片状": 0}
-    zingg_colors: dict[str, tuple[int, int, int]] = field(default_factory=dict)
-    for ar in aspect_ratios:
-        if ar < 1.5:
+    # Four-class classification counts
+    zingg_counts: dict[str, int] = {"球状": 0, "棒状": 0, "片状": 0, "絮凝": 0}
+    for m in morphologies:
+        if m.is_flocculation:
+            zingg_counts["絮凝"] += 1
+        elif m.aspect_ratio < 1.5:
             zingg_counts["球状"] += 1
-        elif ar < 2.5:
+        elif m.aspect_ratio < 2.5:
             zingg_counts["棒状"] += 1
         else:
             zingg_counts["片状"] += 1
 
-    # Per-grain Zingg colors
-    zingg_colors = {i: get_zingg_color(m.aspect_ratio) for i, m in enumerate(morphologies)}
+    # Per-grain classification colors
+    zingg_colors = {}
+    for i, m in enumerate(morphologies):
+        if m.is_flocculation:
+            zingg_colors[i] = CLASSIFICATION_COLORS["絮凝"]
+        else:
+            zingg_colors[i] = get_zingg_color(m.aspect_ratio)
+
+    flocculation_count = zingg_counts["絮凝"]
+    flocculation_ratio = flocculation_count / len(morphologies) if morphologies else 0.0
 
     return GrainStatistics(
         count=len(morphologies),
