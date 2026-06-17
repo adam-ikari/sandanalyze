@@ -151,6 +151,106 @@ def _apply_watershed(binary_mask: np.ndarray, thresh_ratio: float = 0.5) -> np.n
     return output
 
 
+def filter_edge_grains(mask: np.ndarray, border_margin: int = 5) -> np.ndarray:
+    """Remove grains that touch or are too close to the image border.
+
+    Args:
+        mask: Binary mask with grains as 255.
+        border_margin: Minimum distance from border (pixels).
+
+    Returns:
+        Filtered binary mask with edge grains removed.
+    """
+    if mask is None or mask.size == 0:
+        return mask
+
+    h, w = mask.shape[:2]
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    filtered_mask = np.zeros_like(mask)
+
+    for contour in contours:
+        x, y, bw, bh = cv2.boundingRect(contour)
+
+        # Check if contour touches or is too close to border
+        touches_border = (
+            x <= border_margin
+            or y <= border_margin
+            or x + bw >= w - border_margin
+            or y + bh >= h - border_margin
+        )
+
+        if not touches_border:
+            cv2.drawContours(filtered_mask, [contour], -1, 255, thickness=cv2.FILLED)
+
+    return filtered_mask
+
+
+def auto_tune_params(image: np.ndarray) -> PreprocessConfig:
+    """Automatically tune preprocessing parameters based on image characteristics.
+
+    Uses image brightness, contrast, and estimated grain size to determine
+    optimal parameters.
+
+    Args:
+        image: Input grayscale or color image.
+
+    Returns:
+        Tuned PreprocessConfig.
+    """
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
+
+    # Estimate image characteristics
+    mean_brightness = np.mean(gray)
+    std_brightness = np.std(gray)
+
+    # Adjust blur kernel based on noise level
+    if std_brightness > 60:
+        blur_kernel = 7
+    elif std_brightness > 40:
+        blur_kernel = 5
+    else:
+        blur_kernel = 3
+
+    # Ensure odd
+    blur_kernel = blur_kernel if blur_kernel % 2 == 1 else blur_kernel + 1
+
+    # Adjust adaptive block based on image size
+    h, w = gray.shape
+    min_dim = min(h, w)
+    if min_dim > 1000:
+        adaptive_block = 21
+    elif min_dim > 500:
+        adaptive_block = 15
+    else:
+        adaptive_block = 11
+
+    # Ensure odd and >= 3
+    adaptive_block = max(3, adaptive_block if adaptive_block % 2 == 1 else adaptive_block + 1)
+
+    # Adjust C based on brightness
+    if mean_brightness < 100:
+        adaptive_c = 5
+    elif mean_brightness < 150:
+        adaptive_c = 2
+    else:
+        adaptive_c = -2
+
+    # Estimate min_area from image size
+    estimated_grain_area = (min_dim / 50) ** 2
+    min_area = max(50, int(estimated_grain_area * 0.5))
+
+    return PreprocessConfig(
+        blur_kernel=blur_kernel,
+        adaptive_block_size=adaptive_block,
+        adaptive_c=adaptive_c,
+        min_area=min_area,
+    )
+
+
 def _filter_by_area(mask: np.ndarray, min_area: int) -> np.ndarray:
     """Remove small connected components from a binary mask.
 

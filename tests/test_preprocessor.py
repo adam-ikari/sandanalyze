@@ -105,7 +105,80 @@ class TestWatershed:
         assert num_with_watershed > num_no_watershed
 
 
-class TestInputHandling:
+class TestEdgeFiltering:
+    """Tests for edge filtering."""
+
+    def test_filter_edge_grains_removes_border_contours(self):
+        """Contours touching image border should be removed."""
+        h, w = 100, 100
+        mask = np.zeros((h, w), dtype=np.uint8)
+
+        # Grain at center - should keep
+        cv2.circle(mask, (50, 50), 10, 255, -1)
+
+        # Grain at edge - should remove
+        cv2.circle(mask, (5, 50), 8, 255, -1)
+
+        # Grain at corner - should remove
+        cv2.circle(mask, (95, 95), 8, 255, -1)
+
+        from core.preprocessor import filter_edge_grains
+        filtered = filter_edge_grains(mask, border_margin=5)
+
+        # Count remaining grains
+        contours, _ = cv2.findContours(filtered, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        assert len(contours) == 1
+
+        # Verify the remaining grain is the center one
+        x, y, bw, bh = cv2.boundingRect(contours[0])
+        assert x > 5 and y > 5
+
+    def test_filter_edge_grains_keeps_all_center(self):
+        """All center grains should be kept."""
+        h, w = 200, 200
+        mask = np.zeros((h, w), dtype=np.uint8)
+
+        # Multiple grains at center
+        cv2.circle(mask, (50, 50), 15, 255, -1)
+        cv2.circle(mask, (100, 100), 15, 255, -1)
+        cv2.circle(mask, (150, 150), 15, 255, -1)
+
+        from core.preprocessor import filter_edge_grains
+        filtered = filter_edge_grains(mask, border_margin=10)
+
+        contours, _ = cv2.findContours(filtered, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        assert len(contours) == 3
+
+
+class TestAutoTune:
+    """Tests for auto-parameter tuning."""
+
+    def test_auto_tune_params_returns_valid_config(self):
+        """Auto-tuning should return reasonable parameters."""
+        from core.preprocessor import auto_tune_params
+
+        # Create a synthetic image with known grain size
+        img = np.zeros((200, 200), dtype=np.uint8)
+        cv2.circle(img, (100, 100), 20, 200, -1)
+
+        config = auto_tune_params(img)
+
+        assert config.blur_kernel >= 3
+        assert config.adaptive_block_size >= 3
+        assert config.min_area > 0
+
+    def test_auto_tune_params_on_color_image(self):
+        """Auto-tuning should work on color images."""
+        from core.preprocessor import auto_tune_params
+
+        # Create a color image
+        img = np.zeros((200, 200, 3), dtype=np.uint8)
+        cv2.circle(img, (100, 100), 20, (200, 200, 200), -1)
+
+        config = auto_tune_params(img)
+
+        assert config.blur_kernel >= 3
+        assert config.min_area > 0
     """Tests for different input image formats."""
 
     def test_grayscale_input(self, sample_grain_image):
