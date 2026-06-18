@@ -14,10 +14,10 @@ from core.morphology import compute_morphology, compute_statistics
 class TestFullPipelineSynthetic:
     """Integration tests using synthetic grain images."""
 
-    def test_pipeline_with_watershed(self, sample_grain_image):
-        """Test full pipeline with synthetic image and watershed enabled."""
+    def test_pipeline_without_watershed(self, sample_grain_image):
+        """Test full pipeline with synthetic image."""
         # Step 1: Preprocess
-        config = PreprocessConfig(use_clahe=False, use_watershed=True, min_area=50)
+        config = PreprocessConfig(use_clahe=False, min_area=50)
         mask = preprocess(sample_grain_image, config)
 
         # Verify mask is binary and has content
@@ -78,40 +78,6 @@ class TestFullPipelineSynthetic:
         assert len(stats.sphericity_values) == stats.count
         assert isinstance(stats.zingg_counts, dict)
 
-    def test_pipeline_without_watershed(self, sample_grain_image):
-        """Test full pipeline with synthetic image and watershed disabled."""
-        # Step 1: Preprocess without watershed
-        config = PreprocessConfig(use_clahe=False, use_watershed=False, min_area=50)
-        mask = preprocess(sample_grain_image, config)
-
-        # Verify mask
-        assert mask.dtype == np.uint8
-        assert set(np.unique(mask).tolist()).issubset({0, 255})
-        assert np.sum(mask) > 0
-
-        # Step 2: Detect grains
-        grains = detect_grains(mask, min_area=50)
-        assert len(grains) > 0, "Should detect at least one grain"
-
-        # Step 3: Compute morphology
-        morphologies = []
-        for grain in grains:
-            morph = compute_morphology(grain.contour, grain.mask)
-            morphologies.append(morph)
-
-        assert len(morphologies) == len(grains)
-        for morph in morphologies:
-            assert morph.area > 0
-            assert morph.perimeter > 0
-            assert 0 < morph.circularity <= 1.0
-            assert morph.d_eq > 0
-
-        # Step 4: Compute statistics
-        stats = compute_statistics(morphologies)
-        assert stats.count == len(grains)
-        assert stats.area_mean > 0
-        assert stats.d_eq_mean > 0
-
 
 class TestFullPipelineRealImage:
     """Integration tests using a real sand image."""
@@ -128,7 +94,7 @@ class TestFullPipelineRealImage:
             pytest.skip(f"Could not load real image from {real_sand_image_path}")
 
         # Step 1: Preprocess
-        config = PreprocessConfig(use_clahe=True, use_watershed=True, min_area=50)
+        config = PreprocessConfig(use_clahe=True, min_area=50)
         mask = preprocess(image, config)
 
         # Verify mask
@@ -192,48 +158,3 @@ class TestFullPipelineRealImage:
         # Zingg counts should sum to total count
         total_zingg = sum(stats.zingg_counts.values())
         assert total_zingg == stats.count
-
-    def test_pipeline_without_watershed_real_image(self, real_sand_image_path):
-        """Test full pipeline with real image and watershed disabled."""
-        # Skip if real image not available
-        if not os.path.exists(real_sand_image_path):
-            pytest.skip(f"Real image not found at {real_sand_image_path}")
-
-        # Load real image
-        image = cv2.imread(real_sand_image_path, cv2.IMREAD_GRAYSCALE)
-        if image is None:
-            pytest.skip(f"Could not load real image from {real_sand_image_path}")
-
-        # Step 1: Preprocess without watershed
-        config = PreprocessConfig(use_clahe=True, use_watershed=False, min_area=50)
-        mask = preprocess(image, config)
-
-        # Verify mask
-        assert mask.dtype == np.uint8
-        assert set(np.unique(mask).tolist()).issubset({0, 255})
-        assert np.sum(mask) > 0
-
-        # Step 2: Detect grains
-        grains = detect_grains(mask, min_area=50)
-        assert len(grains) > 0, "Should detect at least one grain"
-
-        # Step 3: Compute morphology
-        morphologies = []
-        for grain in grains:
-            morph = compute_morphology(grain.contour, grain.mask)
-            morphologies.append(morph)
-
-        assert len(morphologies) == len(grains)
-        for morph in morphologies:
-            assert morph.area > 0
-            assert morph.perimeter > 0
-            assert 0 < morph.circularity <= 1.0
-            assert morph.d_eq > 0
-
-        # Step 4: Compute statistics
-        stats = compute_statistics(morphologies)
-        assert stats.count == len(grains)
-        assert stats.count > 0
-        assert stats.area_mean > 0
-        assert stats.d_eq_mean > 0
-        assert sum(stats.zingg_counts.values()) == stats.count

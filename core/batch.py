@@ -15,7 +15,7 @@ from core.classifier import classify_grain
 from core.detector import detect_grains, FlocculationConfig
 from core.exporter import export_csv, export_annotated_image
 from core.morphology import compute_morphology, compute_statistics, GrainMorphology, GrainStatistics
-from core.preprocessor import preprocess, PreprocessConfig
+from core.preprocessor import PreprocessConfig
 from core.report import generate_pdf_report
 from core.traditional import GrainContour
 
@@ -96,20 +96,14 @@ def process_single_image(
             result.error_message = f"Failed to load image: {image_path}"
             return result
 
-        # Preprocess
-        mask = preprocess(image, config)
-
-        # Detect grains
+        # Detect grains using v6 single-step pipeline
         detections = detect_grains(
-            mask,
-            image_shape=image.shape,
+            image,
+            config=config,
             min_area=config.min_area,
             border_margin=border_margin,
             floc_config=floc_config,
         )
-
-        # Filter edge grains
-        detections = [d for d in detections if not d.is_edge]
 
         # Compute morphology and classify
         morphologies = []
