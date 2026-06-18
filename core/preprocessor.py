@@ -28,7 +28,7 @@ class PreprocessConfig:
     """
 
     blur_kernel: int = 5
-    adaptive_block_size: int = 11
+    adaptive_block_size: int = 21
     adaptive_c: int = 2
     morph_kernel_size: int = 3
     morph_open_iter: int = 1
