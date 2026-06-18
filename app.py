@@ -324,12 +324,12 @@ with st.sidebar:
                     st.info(f"Auto-tuned: blur={config.blur_kernel}, "
                             f"block={config.adaptive_block_size}")
 
-                # Use v6 single-step detection
+                # Use v6 single-step detection with EXP003 default parameters
                 results = detect_grains(
                     image,
                     config,
-                    min_area=config.min_area,
-                    max_area=15000,
+                    min_area=1000,  # EXP003 default
+                    max_area=15000,  # EXP003 default
                     border_margin=st.session_state.border_margin,
                     hull_expansion_ratio=st.session_state.hull_expansion_ratio,
                     floc_config=st.session_state.floc_config if st.session_state.use_flocculation else None,

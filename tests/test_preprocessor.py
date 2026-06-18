@@ -14,12 +14,12 @@ class TestPreprocessConfig:
         """Test that PreprocessConfig has sensible defaults."""
         config = PreprocessConfig()
         assert config.blur_kernel == 5
-        assert config.adaptive_block_size == 11
-        assert config.adaptive_c == 2
+        assert config.adaptive_block_size == 31
+        assert config.adaptive_c == 5
         assert config.morph_kernel_size == 3
         assert config.morph_open_iter == 1
         assert config.morph_close_iter == 1
-        assert config.min_area == 50
+        assert config.min_area == 1000
         assert config.use_clahe is True
 
 

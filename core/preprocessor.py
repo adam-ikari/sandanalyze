@@ -28,12 +28,12 @@ class PreprocessConfig:
     """
 
     blur_kernel: int = 5
-    adaptive_block_size: int = 11
-    adaptive_c: int = 2
+    adaptive_block_size: int = 31
+    adaptive_c: int = 5
     morph_kernel_size: int = 3
     morph_open_iter: int = 1
     morph_close_iter: int = 1
-    min_area: int = 50
+    min_area: int = 1000
     use_clahe: bool = True
 
 
