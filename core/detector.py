@@ -154,6 +154,10 @@ def detect_grains(
         # Compute circularity
         circularity = (4 * np.pi * area) / (perimeter ** 2) if perimeter > 0 else 0
 
+        # Filter out shapes with very low circularity (likely incomplete/edge grains)
+        if circularity < 0.05:
+            continue
+
         # Compute aspect ratio from bounding rect
         x2, y2, bw, bh = cv2.boundingRect(cnt_global)
         aspect_ratio = max(bw, bh) / min(bw, bh) if min(bw, bh) > 0 else 0
