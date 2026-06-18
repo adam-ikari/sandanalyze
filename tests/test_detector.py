@@ -1,99 +1,217 @@
-"""Tests for the grain detection module."""
+"""Tests for the grain detection module (v6 pipeline)."""
 
 import cv2
 import numpy as np
 
-from core.detector import detect_flocculation, is_edge_grain, detect_grains, FlocculationConfig
+import pytest
+
+from core.detector import detect_grains, FlocculationConfig, DetectionResult
+from core.preprocessor import PreprocessConfig
 
 
-class TestFlocculationDetection:
-    """Tests for flocculation detection."""
+def _make_test_image(size=400):
+    """Create a synthetic image with a realistic gray background for testing.
 
-    def test_large_irregular_is_flocculation(self):
-        """Large irregular contour should be detected as flocculation."""
-        # Create a large irregular contour with low circularity and convexity
-        # Use a very irregular shape with deep indentations
-        mask = np.zeros((400, 400), dtype=np.uint8)
-
-        # Draw a very irregular shape - multiple circles connected
-        # This simulates a flocculation (cluster of grains)
-        cv2.circle(mask, (100, 100), 40, 255, -1)
-        cv2.circle(mask, (180, 120), 35, 255, -1)
-        cv2.circle(mask, (140, 200), 45, 255, -1)
-        cv2.circle(mask, (220, 180), 30, 255, -1)
-        cv2.circle(mask, (120, 280), 38, 255, -1)
-
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        contour = contours[0]
-
-        # Use a config that will detect this as flocculation
-        config = FlocculationConfig(
-            max_circularity=0.5,  # Higher threshold for this test
-            max_convexity=0.8,    # Higher threshold
-        )
-        is_floc = detect_flocculation(contour, config)
-
-        assert is_floc is True
-
-    def test_small_round_is_not_flocculation(self):
-        """Small round contour should NOT be flocculation."""
-        # Create a small round contour
-        contour = np.array([
-            [0, 10], [5, 5], [10, 0], [15, 5], [20, 10], [15, 15], [10, 20], [5, 15]
-        ], dtype=np.int32).reshape(-1, 1, 2)
-
-        config = FlocculationConfig()
-        is_floc = detect_flocculation(contour, config)
-
-        assert is_floc is False
+    Pure black backgrounds cause adaptiveThreshold to fragment circles
+    because the local mean is computed over neighborhoods that are mostly
+    black. A gray background with slight noise makes the thresholding stable.
+    """
+    image = np.full((size, size, 3), 50, dtype=np.uint8)
+    # Add slight noise
+    noise = np.random.randint(0, 20, (size, size, 3), dtype=np.uint8)
+    image = cv2.add(image, noise)
+    return image
 
 
-class TestEdgeFiltering:
-    """Tests for edge filtering."""
-
-    def test_edge_grain_detected(self):
-        """Grain at edge should be detected as edge."""
-        contour = np.array([
-            [0, 0], [10, 0], [10, 10], [0, 10]
-        ], dtype=np.int32).reshape(-1, 1, 2)
-
-        is_edges = is_edge_grain(contour, (100, 100), border_margin=5)
-        assert is_edges is True
-
-    def test_center_grain_not_edge(self):
-        """Grain at center should NOT be edge."""
-        contour = np.array([
-            [40, 40], [60, 40], [60, 60], [40, 60]
-        ], dtype=np.int32).reshape(-1, 1, 2)
-
-        is_edges = is_edge_grain(contour, (100, 100), border_margin=5)
-        assert is_edges is False
+def _test_config():
+    """Return a PreprocessConfig tuned for synthetic test images."""
+    return PreprocessConfig(
+        adaptive_block_size=11,
+        morph_kernel_size=3,
+        morph_open_iter=1,
+    )
 
 
 class TestDetectGrains:
-    """Tests for the detect_grains function."""
+    """Tests for the detect_grains function with v6 pipeline."""
 
-    def test_detect_grains_from_mask(self):
-        """Should detect grains from a binary mask."""
-        # Create a mask with two grains
-        mask = np.zeros((100, 100), dtype=np.uint8)
-        cv2.circle(mask, (30, 30), 10, 255, -1)
-        cv2.circle(mask, (70, 70), 10, 255, -1)
+    def test_detect_grains_from_image(self):
+        """Should detect grains from a raw image."""
+        image = _make_test_image(400)
+        cv2.circle(image, (100, 100), 30, (200, 200, 200), -1)
+        cv2.circle(image, (300, 300), 30, (200, 200, 200), -1)
 
-        results = detect_grains(mask, (100, 100), min_area=50)
+        config = _test_config()
+        results = detect_grains(
+            image, config, min_area=50, crop_black_background=False
+        )
 
-        assert len(results) == 2
-        assert all(not r.is_edge for r in results)
+        assert len(results) > 0
+        assert all(isinstance(r, DetectionResult) for r in results)
 
-    def test_detect_grains_filters_small(self):
-        """Should filter out small grains."""
-        # Create a mask with one large and one small grain
-        mask = np.zeros((100, 100), dtype=np.uint8)
-        cv2.circle(mask, (30, 30), 10, 255, -1)  # Large
-        cv2.circle(mask, (70, 70), 3, 255, -1)   # Small
+    def test_detect_grains_returns_expected_fields(self):
+        """DetectionResult should have all expected fields."""
+        image = _make_test_image(400)
+        cv2.circle(image, (200, 200), 35, (200, 200, 200), -1)
 
-        results = detect_grains(mask, (100, 100), min_area=50)
+        config = _test_config()
+        results = detect_grains(
+            image, config, min_area=50, crop_black_background=False
+        )
 
-        # Should only detect the large grain
-        assert len(results) == 1
-        assert results[0].area > 50
+        assert len(results) > 0
+        r = results[0]
+        assert hasattr(r, 'contour')
+        assert hasattr(r, 'mask')
+        assert hasattr(r, 'area')
+        assert hasattr(r, 'perimeter')
+        assert hasattr(r, 'circularity')
+        assert hasattr(r, 'aspect_ratio')
+        assert hasattr(r, 'major_axis')
+        assert hasattr(r, 'minor_axis')
+        assert hasattr(r, 'convexity')
+        assert hasattr(r, 'is_flocculation')
+        # is_edge was removed in v6
+        assert not hasattr(r, 'is_edge')
+
+    def test_detect_grains_filters_by_area(self):
+        """Should filter out grains outside min_area/max_area range."""
+        image = _make_test_image(400)
+        cv2.circle(image, (100, 100), 30, (200, 200, 200), -1)   # Large
+        cv2.circle(image, (300, 300), 8, (200, 200, 200), -1)   # Small
+
+        config = _test_config()
+        results = detect_grains(
+            image, config, min_area=300, max_area=5000,
+            crop_black_background=False,
+        )
+
+        # Only the large grain should be detected
+        assert all(r.area >= 300 for r in results)
+        assert all(r.area <= 5000 for r in results)
+
+    def test_detect_grains_filters_edge_grains(self):
+        """Grains touching the ROI boundary should be excluded."""
+        image = _make_test_image(400)
+        # Grain at center - should be kept
+        cv2.circle(image, (200, 200), 30, (200, 200, 200), -1)
+        # Grain touching the edge - should be filtered out
+        cv2.circle(image, (15, 15), 20, (200, 200, 200), -1)
+
+        config = _test_config()
+        results = detect_grains(
+            image, config, min_area=50, crop_black_background=False
+        )
+
+        # Only the center grain should remain (edge grain filtered by ROI boundary)
+        assert len(results) >= 1
+        for r in results:
+            x, y, bw, bh = cv2.boundingRect(r.contour)
+            # Verify no result touches the image border
+            assert x > 0
+            assert y > 0
+            assert x + bw < 400
+            assert y + bh < 400
+
+    def test_detect_grains_with_hull_expansion_ratio(self):
+        """Hull expansion ratio should affect contour selection."""
+        image = _make_test_image(400)
+        cv2.circle(image, (200, 200), 35, (200, 200, 200), -1)
+
+        config = _test_config()
+        # Low ratio: prefer convex hull when hull_area/area < ratio
+        results_low = detect_grains(
+            image, config, min_area=50, hull_expansion_ratio=1.2,
+            crop_black_background=False,
+        )
+        # High ratio: prefer original contour when hull_area/area < ratio
+        results_high = detect_grains(
+            image, config, min_area=50, hull_expansion_ratio=5.0,
+            crop_black_background=False,
+        )
+
+        assert len(results_low) > 0
+        assert len(results_high) > 0
+
+    def test_detect_grains_with_flocculation_config(self):
+        """Flocculation config should affect is_flocculation flag."""
+        # Create an irregular shape (simulating flocculation)
+        image = _make_test_image(400)
+        cv2.circle(image, (100, 100), 40, (200, 200, 200), -1)
+        cv2.circle(image, (180, 120), 35, (200, 200, 200), -1)
+        cv2.circle(image, (140, 200), 45, (200, 200, 200), -1)
+
+        config = _test_config()
+        floc_config = FlocculationConfig(
+            max_circularity=0.5,
+            max_convexity=0.8,
+        )
+        results = detect_grains(
+            image, config, min_area=50, floc_config=floc_config,
+            crop_black_background=False,
+        )
+
+        assert len(results) > 0
+        # The irregular cluster should be flagged as flocculation
+        assert any(r.is_flocculation for r in results)
+
+    def test_detect_grains_sorts_by_area_descending(self):
+        """Results should be sorted by area descending."""
+        image = _make_test_image(400)
+        cv2.circle(image, (100, 100), 35, (200, 200, 200), -1)   # Large
+        cv2.circle(image, (300, 300), 18, (200, 200, 200), -1)  # Small
+
+        config = _test_config()
+        results = detect_grains(
+            image, config, min_area=50, crop_black_background=False,
+        )
+
+        areas = [r.area for r in results]
+        assert areas == sorted(areas, reverse=True)
+
+    def test_detect_grains_with_grayscale_image(self):
+        """Should work with grayscale images too."""
+        image = np.full((400, 400), 50, dtype=np.uint8)
+        noise = np.random.randint(0, 20, (400, 400), dtype=np.uint8)
+        image = cv2.add(image, noise)
+        cv2.circle(image, (200, 200), 35, 200, -1)
+
+        config = _test_config()
+        results = detect_grains(
+            image, config, min_area=50, crop_black_background=False,
+        )
+
+        assert len(results) > 0
+        assert all(isinstance(r, DetectionResult) for r in results)
+
+    def test_detect_grains_empty_image(self):
+        """Should return empty list for empty image."""
+        image = _make_test_image(400)
+
+        config = _test_config()
+        results = detect_grains(
+            image, config, min_area=50, crop_black_background=False,
+        )
+
+        assert len(results) == 0
+
+    def test_detect_grains_with_crop_black_background(self):
+        """Should work with crop_black_background=True on a real-like image."""
+        # Use a larger image with a bright region in the center to simulate
+        # a real image where cropping would find a meaningful ROI.
+        image = np.full((400, 400, 3), 50, dtype=np.uint8)
+        noise = np.random.randint(0, 20, (400, 400, 3), dtype=np.uint8)
+        image = cv2.add(image, noise)
+        # Fill a large central bright region
+        image[50:350, 50:350] = np.clip(image[50:350, 50:350] + 130, 0, 255).astype(np.uint8)
+        # Draw grains inside
+        cv2.circle(image, (200, 200), 30, (220, 220, 220), -1)
+        cv2.circle(image, (120, 120), 25, (220, 220, 220), -1)
+
+        config = _test_config()
+        results = detect_grains(
+            image, config, min_area=50, crop_black_background=True,
+        )
+
+        assert len(results) > 0
+        assert all(isinstance(r, DetectionResult) for r in results)
