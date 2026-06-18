@@ -144,6 +144,11 @@ def detect_grains(
 
         # Compute area and perimeter
         area = cv2.contourArea(cnt_global)
+
+        # Double-check area filtering (contourArea may differ from connectedComponents area)
+        if area < min_area or area > max_area:
+            continue
+
         perimeter = cv2.arcLength(cnt_global, True)
 
         # Compute circularity
