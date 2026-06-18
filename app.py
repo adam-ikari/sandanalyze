@@ -16,7 +16,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from core.classifier import classify_grain
-from core.detector import detect_grains as detect_grains_v2, FlocculationConfig
+from core.detector import detect_grains, FlocculationConfig
 from core.morphology import (
     GrainMorphology,
     GrainStatistics,
@@ -26,7 +26,6 @@ from core.morphology import (
     CLASSIFICATION_COLORS,
 )
 from core.preprocessor import PreprocessConfig, preprocess, auto_tune_params
-from core.traditional import GrainContour, detect_grains
 from core.report import generate_pdf_report
 from core.exporter import export_csv, export_annotated_image
 
@@ -61,7 +60,7 @@ DEFAULTS = {
     "config": PreprocessConfig(),
     "detection_method": "traditional",
     "last_processing_time": 0.0,
-    "use_edge_filter": True,
+    "hull_expansion_ratio": 1.5,
     "border_margin": 5,
     "use_flocculation": True,
     "floc_config": FlocculationConfig(),
@@ -275,7 +274,6 @@ with st.sidebar:
             )
 
         use_clahe = st.checkbox("CLAHE Enhancement", value=config.use_clahe)
-        use_watershed = st.checkbox("Watershed Segmentation", value=config.use_watershed)
         use_auto_tune = st.checkbox("Auto-Tune Parameters", value=False)
 
         st.session_state.config = PreprocessConfig(
@@ -285,27 +283,28 @@ with st.sidebar:
             morph_kernel_size=morph_kernel,
             min_area=min_area,
             use_clahe=use_clahe,
-            use_watershed=use_watershed,
         )
         st.session_state.use_auto_tune = use_auto_tune
 
     # ── Detection options ──────────────────────────────────────────────────
     with st.expander("🔍 Detection Options", expanded=False):
-        use_edge_filter = st.checkbox(
-            "Edge Filtering", value=st.session_state.use_edge_filter,
-            help="Exclude grains touching image borders"
-        )
         border_margin = st.number_input(
             "Border Margin (px)", min_value=0, max_value=50,
             value=st.session_state.border_margin, step=1,
+            help="Distance from ROI boundary for edge filtering"
+        )
+        hull_expansion_ratio = st.slider(
+            "Hull Expansion Ratio", min_value=1.0, max_value=3.0,
+            value=st.session_state.hull_expansion_ratio, step=0.1,
+            help="Threshold for using convex hull vs mask filling"
         )
         use_flocculation = st.checkbox(
             "Flocculation Detection", value=st.session_state.use_flocculation,
             help="Detect and classify grain clusters"
         )
 
-        st.session_state.use_edge_filter = use_edge_filter
         st.session_state.border_margin = border_margin
+        st.session_state.hull_expansion_ratio = hull_expansion_ratio
         st.session_state.use_flocculation = use_flocculation
 
     # ── Run button ─────────────────────────────────────────────────────────
@@ -325,20 +324,17 @@ with st.sidebar:
                     st.info(f"Auto-tuned: blur={config.blur_kernel}, "
                             f"block={config.adaptive_block_size}")
 
-                mask = preprocess(image, config)
-
-                # Use v2 detector with flocculation and edge filtering
-                results = detect_grains_v2(
-                    mask,
-                    image_shape=image.shape,
+                # Use v6 single-step detection
+                results = detect_grains(
+                    image,
+                    config,
                     min_area=config.min_area,
-                    border_margin=st.session_state.border_margin if use_edge_filter else 0,
-                    floc_config=st.session_state.floc_config if use_flocculation else None,
+                    max_area=15000,
+                    border_margin=st.session_state.border_margin,
+                    hull_expansion_ratio=st.session_state.hull_expansion_ratio,
+                    floc_config=st.session_state.floc_config if st.session_state.use_flocculation else None,
+                    crop_black_background=True,
                 )
-
-                # Filter out edge grains if enabled
-                if use_edge_filter:
-                    results = [r for r in results if not r.is_edge]
 
                 st.session_state.detection_method = "traditional"
 
