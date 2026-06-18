@@ -4,6 +4,8 @@ Provides configurable preprocessing pipeline to convert raw sand images
 into binary masks suitable for morphological analysis.
 """
 
+from typing import Tuple
+
 from dataclasses import dataclass
 
 import cv2
@@ -23,20 +25,16 @@ class PreprocessConfig:
         morph_close_iter: Number of morphological close iterations.
         min_area: Minimum contour area to keep in the final mask.
         use_clahe: Whether to apply CLAHE contrast enhancement.
-        use_watershed: Whether to apply watershed segmentation.
-        watershed_thresh_ratio: Ratio for distance transform threshold (default 0.5).
     """
 
     blur_kernel: int = 5
-    adaptive_block_size: int = 21
+    adaptive_block_size: int = 11
     adaptive_c: int = 2
     morph_kernel_size: int = 3
     morph_open_iter: int = 1
     morph_close_iter: int = 1
     min_area: int = 50
     use_clahe: bool = True
-    use_watershed: bool = True
-    watershed_thresh_ratio: float = 0.5
 
 
 def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.ndarray:
@@ -48,8 +46,7 @@ def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.
         3. Gaussian blur.
         4. Adaptive thresholding.
         5. Morphological open/close.
-        6. Optional watershed segmentation.
-        7. Area filtering.
+        6. Area filtering.
 
     Args:
         image: Input image (grayscale or color).
@@ -92,63 +89,61 @@ def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.
     opened = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=config.morph_open_iter)
     closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel, iterations=config.morph_close_iter)
 
-    # 6. Optional watershed
-    if config.use_watershed:
-        mask = _apply_watershed(closed, config.watershed_thresh_ratio)
-    else:
-        mask = closed
-
-    # 7. Area filtering
-    mask = _filter_by_area(mask, config.min_area)
+    # 6. Area filtering
+    mask = _filter_by_area(closed, config.min_area)
 
     return mask
 
 
-def _apply_watershed(binary_mask: np.ndarray, thresh_ratio: float = 0.5) -> np.ndarray:
-    """Separate touching grains using the watershed algorithm.
+def crop_black_background(image: np.ndarray, threshold: int = 30) -> Tuple[np.ndarray, Tuple[int, int, int, int]]:
+    """Crop black background from image.
 
-    Uses distance transform to find sure foreground regions, then applies
-    the watershed algorithm to separate touching grains.
+    Finds the largest bright connected component and crops to its bounding box.
 
     Args:
-        binary_mask: Binary mask with foreground as 255.
-        thresh_ratio: Ratio for distance transform threshold (default 0.5).
+        image: Input image (grayscale or color).
+        threshold: Brightness threshold for background separation.
 
     Returns:
-        Binary mask with separated grains.
+        Tuple of (cropped_image, (x, y, w, h)) where (x, y, w, h) are the
+        bounds of the cropped region in the original image coordinates.
     """
-    # Ensure binary mask is clean
-    binary = np.zeros_like(binary_mask)
-    binary[binary_mask > 0] = 255
+    # Convert to grayscale if needed
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
 
-    # Distance transform
-    dist_transform = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
+    # Threshold to separate bright foreground from dark background
+    _, binary = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY)
 
-    # Threshold to get sure foreground
-    _, sure_fg = cv2.threshold(dist_transform, thresh_ratio * dist_transform.max(), 255, 0)
-    sure_fg = np.uint8(sure_fg)
+    # Find connected components
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
 
-    # Sure background
-    sure_bg = cv2.dilate(binary, np.ones((3, 3), np.uint8), iterations=2)
+    # Find the largest component (excluding background which is label 0)
+    largest_label = 0
+    largest_area = 0
+    for i in range(1, num_labels):
+        area = stats[i, cv2.CC_STAT_AREA]
+        if area > largest_area:
+            largest_area = area
+            largest_label = i
 
-    # Unknown region
-    unknown = cv2.subtract(sure_bg, sure_fg)
+    if largest_label == 0:
+        # No bright component found, return original image and full bounds
+        h, w = image.shape[:2]
+        return image.copy(), (0, 0, w, h)
 
-    # Label markers
-    num_markers, markers = cv2.connectedComponents(sure_fg)
-    markers = markers + 1  # Background is 1
-    markers[unknown == 255] = 0  # Unknown is 0
+    # Get bounding box of the largest component
+    x = stats[largest_label, cv2.CC_STAT_LEFT]
+    y = stats[largest_label, cv2.CC_STAT_TOP]
+    w = stats[largest_label, cv2.CC_STAT_WIDTH]
+    h = stats[largest_label, cv2.CC_STAT_HEIGHT]
 
-    # Watershed
-    # Create a color image for watershed
-    color_img = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
-    markers = cv2.watershed(color_img, markers)
+    # Crop the original image to the bounding box
+    cropped = image[y : y + h, x : x + w]
 
-    # Create output mask: keep only regions that are not boundaries
-    output = np.zeros_like(binary)
-    output[markers > 1] = 255
-
-    return output
+    return cropped, (x, y, w, h)
 
 
 def filter_edge_grains(mask: np.ndarray, border_margin: int = 5) -> np.ndarray:

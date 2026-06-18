@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import pytest
 
-from core.preprocessor import PreprocessConfig, preprocess
+from core.preprocessor import PreprocessConfig, preprocess, crop_black_background
 
 
 class TestPreprocessConfig:
@@ -14,15 +14,13 @@ class TestPreprocessConfig:
         """Test that PreprocessConfig has sensible defaults."""
         config = PreprocessConfig()
         assert config.blur_kernel == 5
-        assert config.adaptive_block_size == 21
+        assert config.adaptive_block_size == 11
         assert config.adaptive_c == 2
         assert config.morph_kernel_size == 3
         assert config.morph_open_iter == 1
         assert config.morph_close_iter == 1
         assert config.min_area == 50
         assert config.use_clahe is True
-        assert config.use_watershed is True
-        assert config.watershed_thresh_ratio == 0.5
 
 
 class TestPreprocessReturns:
@@ -30,7 +28,7 @@ class TestPreprocessReturns:
 
     def test_returns_binary_mask(self, sample_grain_image):
         """Test that preprocess returns a binary mask (0 and 255)."""
-        config = PreprocessConfig(use_clahe=False, use_watershed=False)
+        config = PreprocessConfig(use_clahe=False)
         result = preprocess(sample_grain_image, config)
 
         assert result.dtype == np.uint8
@@ -38,7 +36,7 @@ class TestPreprocessReturns:
 
     def test_returns_same_shape(self, sample_grain_image):
         """Test that output mask has the same shape as input."""
-        config = PreprocessConfig(use_clahe=False, use_watershed=False)
+        config = PreprocessConfig(use_clahe=False)
         result = preprocess(sample_grain_image, config)
         assert result.shape == sample_grain_image.shape
 
@@ -48,8 +46,8 @@ class TestClahe:
 
     def test_clahe_enhances_contrast(self, sample_grain_image):
         """Test that CLAHE increases local contrast."""
-        config_no_clahe = PreprocessConfig(use_clahe=False, use_watershed=False)
-        config_with_clahe = PreprocessConfig(use_clahe=True, use_watershed=False)
+        config_no_clahe = PreprocessConfig(use_clahe=False)
+        config_with_clahe = PreprocessConfig(use_clahe=True)
 
         result_no_clahe = preprocess(sample_grain_image, config_no_clahe)
         result_with_clahe = preprocess(sample_grain_image, config_with_clahe)
@@ -59,50 +57,69 @@ class TestClahe:
         assert np.sum(result_with_clahe) >= np.sum(result_no_clahe)
 
 
-class TestWatershed:
-    """Tests for watershed segmentation."""
+class TestCropBlackBackground:
+    """Tests for crop_black_background helper."""
 
-    def test_watershed_separates_touching_grains(self):
-        """Test that watershed separates touching grains.
+    def test_crops_black_background(self):
+        """Test that black background is cropped to the bright region."""
+        # Create an image with a bright rectangle on a black background
+        image = np.zeros((200, 200, 3), dtype=np.uint8)
+        cv2.rectangle(image, (50, 50), (150, 120), (200, 200, 200), -1)
 
-        Creates a figure-8 shape (two circles connected by a thick bridge)
-        that survives the preprocessing pipeline as a single component,
-        then verifies watershed splits it into two distinct regions.
-        """
-        # Create a figure-8 shape with strong contrast
-        binary = np.zeros((200, 200), dtype=np.uint8)
-        cv2.circle(binary, (70, 100), 30, 255, -1)
-        cv2.circle(binary, (130, 100), 30, 255, -1)
-        # Thick bridge to survive adaptive thresholding
-        cv2.rectangle(binary, (70, 95), (130, 105), 255, -1)
+        cropped, (x, y, w, h) = crop_black_background(image)
 
-        img = np.where(binary > 0, 255, 0).astype(np.uint8)
+        # Check that the crop bounds match the bright rectangle
+        assert x == 50
+        assert y == 50
+        assert w == 101
+        assert h == 71
 
-        # Use a larger adaptive block size to avoid splitting the bridge
-        config_no_watershed = PreprocessConfig(
-            use_clahe=False,
-            use_watershed=False,
-            min_area=10,
-            adaptive_block_size=71,
-            adaptive_c=0,
-        )
-        config_with_watershed = PreprocessConfig(
-            use_clahe=False,
-            use_watershed=True,
-            min_area=10,
-            adaptive_block_size=71,
-            adaptive_c=0,
-        )
+        # Check that the cropped image has the expected shape
+        assert cropped.shape == (71, 101, 3)
 
-        result_no_watershed = preprocess(img, config_no_watershed)
-        result_with_watershed = preprocess(img, config_with_watershed)
+        # Check that the cropped image contains the bright region
+        assert np.mean(cropped) > 100
 
-        # Count connected components (excluding background)
-        num_no_watershed, _ = cv2.connectedComponents(result_no_watershed)
-        num_with_watershed, _ = cv2.connectedComponents(result_with_watershed)
+    def test_crops_grayscale_image(self):
+        """Test that crop_black_background works on grayscale images."""
+        image = np.zeros((200, 200), dtype=np.uint8)
+        cv2.rectangle(image, (30, 40), (100, 90), 255, -1)
 
-        # With watershed, we should have more components
-        assert num_with_watershed > num_no_watershed
+        cropped, (x, y, w, h) = crop_black_background(image)
+
+        assert x == 30
+        assert y == 40
+        assert w == 71
+        assert h == 51
+        assert cropped.shape == (51, 71)
+
+    def test_returns_full_image_when_no_bright_region(self):
+        """Test that an all-black image returns the original image."""
+        image = np.zeros((100, 100), dtype=np.uint8)
+
+        cropped, (x, y, w, h) = crop_black_background(image)
+
+        assert x == 0
+        assert y == 0
+        assert w == 100
+        assert h == 100
+        assert cropped.shape == (100, 100)
+
+    def test_returns_largest_component(self):
+        """Test that only the largest bright component is kept."""
+        image = np.zeros((200, 200), dtype=np.uint8)
+        # Small bright component
+        cv2.rectangle(image, (10, 10), (30, 30), 255, -1)
+        # Large bright component
+        cv2.rectangle(image, (80, 80), (180, 160), 255, -1)
+
+        cropped, (x, y, w, h) = crop_black_background(image)
+
+        # Should crop to the large component
+        assert x == 80
+        assert y == 80
+        assert w == 101
+        assert h == 81
 
 
 class TestEdgeFiltering:
@@ -179,25 +196,28 @@ class TestAutoTune:
 
         assert config.blur_kernel >= 3
         assert config.min_area > 0
+
+
+class TestInputHandling:
     """Tests for different input image formats."""
 
     def test_grayscale_input(self, sample_grain_image):
         """Test that grayscale input is handled correctly."""
-        config = PreprocessConfig(use_clahe=False, use_watershed=False)
+        config = PreprocessConfig(use_clahe=False)
         result = preprocess(sample_grain_image, config)
         assert result.shape == sample_grain_image.shape
 
     def test_color_input(self, sample_grain_image):
         """Test that color (3-channel) input is handled correctly."""
         color_image = cv2.cvtColor(sample_grain_image, cv2.COLOR_GRAY2BGR)
-        config = PreprocessConfig(use_clahe=False, use_watershed=False)
+        config = PreprocessConfig(use_clahe=False)
         result = preprocess(color_image, config)
         assert result.shape == sample_grain_image.shape
 
     def test_grayscale_and_color_produce_similar_results(self, sample_grain_image):
         """Test that grayscale and color inputs produce similar masks."""
         color_image = cv2.cvtColor(sample_grain_image, cv2.COLOR_GRAY2BGR)
-        config = PreprocessConfig(use_clahe=False, use_watershed=False)
+        config = PreprocessConfig(use_clahe=False)
 
         result_gray = preprocess(sample_grain_image, config)
         result_color = preprocess(color_image, config)
