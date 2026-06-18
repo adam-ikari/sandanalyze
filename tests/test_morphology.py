@@ -92,6 +92,32 @@ def test_convexity_for_smooth_shape():
     assert morph.convexity > 0.9, f"Expected convexity > 0.9, got {morph.convexity}"
 
 
+def test_solidity_equals_convexity():
+    """Solidity should equal convexity since both are area / hull_area."""
+    size = 200
+    mask = np.zeros((size, size), dtype=np.uint8)
+    center = (size // 2, size // 2)
+    cv2.circle(mask, center, 40, 255, -1)
+
+    contour = _find_contour(mask)
+    morph = compute_morphology(contour, mask)
+
+    assert morph.solidity == pytest.approx(morph.convexity, rel=1e-12)
+
+
+def test_solidity_for_smooth_shape():
+    """A smooth shape (circle/ellipse) should have solidity > 0.9."""
+    size = 200
+    mask = np.zeros((size, size), dtype=np.uint8)
+    center = (size // 2, size // 2)
+    cv2.circle(mask, center, 40, 255, -1)
+
+    contour = _find_contour(mask)
+    morph = compute_morphology(contour, mask)
+
+    assert morph.solidity > 0.9, f"Expected solidity > 0.9, got {morph.solidity}"
+
+
 def test_statistics_from_multiple_grains():
     """Statistics should correctly aggregate multiple grains."""
     size = 200
@@ -125,21 +151,21 @@ def test_zingg_classification():
     size = 200
     morphologies = []
 
-    # Spherical: aspect_ratio < 1.5
+    # Sphere-like (球状): aspect_ratio < 1.5
     mask1 = np.zeros((size, size), dtype=np.uint8)
     cv2.circle(mask1, (size // 2, size // 2), 40, 255, -1)
     contour1 = _find_contour(mask1)
     morph1 = compute_morphology(contour1, mask1)
     morphologies.append(morph1)
 
-    # Rod-like: 1.5 <= aspect_ratio < 2.5
+    # Rod-like (棒状): 1.5 <= aspect_ratio < 2.5
     mask2 = np.zeros((size, size), dtype=np.uint8)
     cv2.ellipse(mask2, (size // 2, size // 2), (50, 25), 0, 0, 360, 255, -1)
     contour2 = _find_contour(mask2)
     morph2 = compute_morphology(contour2, mask2)
     morphologies.append(morph2)
 
-    # Discoidal: aspect_ratio >= 2.5
+    # Sheet-like (片状): aspect_ratio >= 2.5
     mask3 = np.zeros((size, size), dtype=np.uint8)
     cv2.ellipse(mask3, (size // 2, size // 2), (80, 20), 0, 0, 360, 255, -1)
     contour3 = _find_contour(mask3)

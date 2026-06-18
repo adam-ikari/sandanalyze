@@ -23,6 +23,7 @@ class GrainMorphology:
     convexity: float
     feret_max: float
     feret_min: float
+    solidity: float = 0.0
     # New fields for v2.0
     is_flocculation: bool = False
     shape_class: str = ""
@@ -199,6 +200,9 @@ def compute_morphology(contour: np.ndarray, mask: np.ndarray) -> GrainMorphology
     # Feret diameters via rotating calipers
     feret_max, feret_min = _feret_diameters(contour)
 
+    # Solidity = area / convex hull area (same as convexity in this codebase)
+    solidity = convexity
+
     return GrainMorphology(
         area=area,
         perimeter=perimeter,
@@ -211,6 +215,7 @@ def compute_morphology(contour: np.ndarray, mask: np.ndarray) -> GrainMorphology
         convexity=convexity,
         feret_max=feret_max,
         feret_min=feret_min,
+        solidity=solidity,
     )
 
 
