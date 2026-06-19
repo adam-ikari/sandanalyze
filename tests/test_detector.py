@@ -136,10 +136,13 @@ class TestDetectGrains:
     def test_detect_grains_with_flocculation_config(self):
         """Flocculation config should affect is_flocculation flag."""
         # Create an irregular shape (simulating flocculation)
+        # Use a C-shape with low circularity and low convexity (solid, no holes)
         image = _make_test_image(400)
-        cv2.circle(image, (100, 100), 40, (200, 200, 200), -1)
-        cv2.circle(image, (180, 120), 35, (200, 200, 200), -1)
-        cv2.circle(image, (140, 200), 45, (200, 200, 200), -1)
+        pts = np.array([
+            [155, 155], [245, 155], [245, 170], [170, 170], [170, 230], [245, 230],
+            [245, 245], [155, 245]
+        ], dtype=np.int32)
+        cv2.fillPoly(image, [pts], (200, 200, 200))
 
         config = _test_config()
         floc_config = FlocculationConfig(
@@ -197,16 +200,22 @@ class TestDetectGrains:
 
     def test_detect_grains_with_crop_black_background(self):
         """Should work with crop_black_background=True on a real-like image."""
-        # Use a larger image with a bright region in the center to simulate
-        # a real image where cropping would find a meaningful ROI.
-        image = np.full((400, 400, 3), 50, dtype=np.uint8)
-        noise = np.random.randint(0, 20, (400, 400, 3), dtype=np.uint8)
-        image = cv2.add(image, noise)
-        # Fill a large central bright region
-        image[50:350, 50:350] = np.clip(image[50:350, 50:350] + 130, 0, 255).astype(np.uint8)
-        # Draw grains inside
-        cv2.circle(image, (200, 200), 30, (220, 220, 220), -1)
-        cv2.circle(image, (120, 120), 25, (220, 220, 220), -1)
+        # Create a synthetic image that mimics a real sand image:
+        # - Black background (0)
+        # - A bright rectangular region in the center (simulating the sample tray)
+        # - Dark circular grains on the bright tray (grains are darker than background)
+        image = np.zeros((400, 400, 3), dtype=np.uint8)
+
+        # Bright tray region in the center (light gray background)
+        tray_color = (220, 220, 220)
+        cv2.rectangle(image, (50, 50), (350, 350), tray_color, -1)
+
+        # Dark grains on the tray (grains are darker than the tray)
+        # These will be detected as foreground by adaptive threshold (THRESH_BINARY_INV)
+        grain_color = (80, 80, 80)
+        cv2.circle(image, (200, 200), 30, grain_color, -1)
+        cv2.circle(image, (120, 120), 25, grain_color, -1)
+        cv2.circle(image, (280, 150), 28, grain_color, -1)
 
         config = _test_config()
         results = detect_grains(

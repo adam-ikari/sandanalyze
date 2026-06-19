@@ -88,11 +88,11 @@ def detect_grains(
     if crop_black_background:
         _, bright_mask = cv2.threshold(gray, 30, 255, cv2.THRESH_BINARY)
         num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(bright_mask, connectivity=8)
-        max_area = 0
+        largest_bright_area = 0
         max_label = 0
         for i in range(1, num_labels):
-            if stats[i, cv2.CC_STAT_AREA] > max_area:
-                max_area = stats[i, cv2.CC_STAT_AREA]
+            if stats[i, cv2.CC_STAT_AREA] > largest_bright_area:
+                largest_bright_area = stats[i, cv2.CC_STAT_AREA]
                 max_label = i
 
         x = stats[max_label, cv2.CC_STAT_LEFT]
@@ -130,7 +130,13 @@ def detect_grains(
             lx + lw >= w or ly + lh >= h
         )
 
-        if min_area <= area <= max_area and not touches_border:
+        # Allow border-touching components if large enough to be flocculation
+        if touches_border and area >= floc_config.min_area:
+            allow_border = True
+        else:
+            allow_border = not touches_border
+
+        if min_area <= area <= max_area and allow_border:
             filtered[labels == i] = 255
 
     # Step 5: Contour detection
@@ -142,12 +148,14 @@ def detect_grains(
         # Convert to global coordinates
         cnt_global = cnt + np.array([x, y])
 
-        # Compute area and perimeter
-        area = cv2.contourArea(cnt_global)
+        # Compute area using filled mask (more accurate than contourArea for shapes with holes)
+        temp_mask = np.zeros((h_img, w_img), dtype=np.uint8)
+        cv2.drawContours(temp_mask, [cnt_global], -1, 255, thickness=cv2.FILLED)
+        area = float(cv2.countNonZero(temp_mask))
 
-        # Double-check area filtering (contourArea may differ from connectedComponents area)
-        if area < min_area or area > max_area:
-            continue
+        # Skip area re-checking — connectedComponents filtering in Step 4 is sufficient.
+        # contourArea / filled mask overestimates for shapes with interior holes
+        # (e.g. U-shape, C-shape), causing valid grains to be discarded.
 
         perimeter = cv2.arcLength(cnt_global, True)
 
@@ -155,7 +163,8 @@ def detect_grains(
         circularity = (4 * np.pi * area) / (perimeter ** 2) if perimeter > 0 else 0
 
         # Filter out shapes with very low circularity (likely incomplete/edge grains)
-        if circularity < 0.05:
+        # Skip this filter for very small grains as they naturally have lower circularity
+        if circularity < 0.02 and area > 5000:
             continue
 
         # Compute aspect ratio from bounding rect
@@ -177,14 +186,18 @@ def detect_grains(
         convexity = area / hull_area if hull_area > 0 else 0
 
         # Flocculation detection (inline)
+        # Require at least 2 out of 3 conditions to be met for more strict detection
         is_floc = False
         if area >= floc_config.min_area and area <= floc_config.max_area:
-            conditions = [
+            conditions_met = sum([
                 circularity <= floc_config.max_circularity,
                 convexity <= floc_config.max_convexity,
                 aspect_ratio >= floc_config.max_aspect_ratio,
-            ]
-            if sum(conditions) >= 1:
+            ])
+            # Require at least 2 conditions OR very low circularity with low convexity
+            if conditions_met >= 2:
+                is_floc = True
+            elif conditions_met == 1 and circularity < 0.1 and convexity < 0.5:
                 is_floc = True
 
         # Hull smoothing / mask filling
