@@ -36,6 +36,48 @@ class PreprocessConfig:
     min_area: int = 1000
     use_clahe: bool = True
 
+    @classmethod
+    def from_preset(cls, preset_name: str) -> "PreprocessConfig":
+        """Create a PreprocessConfig from a named preset.
+
+        Available presets:
+            - "default": Default parameters (general purpose)
+            - "macro_sand": Optimized for macro sand grain photos
+            - "microscope": Optimized for microscope images
+
+        Args:
+            preset_name: Name of the preset to use.
+
+        Returns:
+            PreprocessConfig instance with preset parameters.
+
+        Raises:
+            ValueError: If preset_name is not recognized.
+        """
+        presets = {
+            "default": cls(),
+            "macro_sand": cls(
+                blur_kernel=3,
+                adaptive_block_size=51,
+                adaptive_c=2,
+                morph_kernel_size=5,
+                min_area=1500,
+            ),
+            "microscope": cls(
+                blur_kernel=7,
+                adaptive_block_size=41,
+                adaptive_c=5,
+                morph_kernel_size=3,
+                min_area=800,
+            ),
+        }
+        if preset_name not in presets:
+            raise ValueError(
+                f"Unknown preset '{preset_name}'. "
+                f"Available: {list(presets.keys())}"
+            )
+        return presets[preset_name]
+
 
 def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.ndarray:
     """Run the full preprocessing pipeline on a sand image.
