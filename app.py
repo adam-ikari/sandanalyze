@@ -328,7 +328,7 @@ with st.sidebar:
                 results = detect_grains(
                     image,
                     config,
-                    min_area=1000,  # EXP003 default
+                    min_area=config.min_area,  # Use config value
                     max_area=15000,  # EXP003 default
                     border_margin=st.session_state.border_margin,
                     hull_expansion_ratio=st.session_state.hull_expansion_ratio,

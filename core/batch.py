@@ -101,6 +101,7 @@ def process_single_image(
             image,
             config=config,
             min_area=config.min_area,
+            max_area=15000,  # EXP003 default
             border_margin=border_margin,
             floc_config=floc_config,
         )
