@@ -10,7 +10,6 @@ The v6 pipeline operates on the raw image in a single step:
 """
 
 from dataclasses import dataclass
-from typing import List, Tuple
 
 import cv2
 import numpy as np
@@ -56,7 +55,7 @@ def detect_grains(
     hull_expansion_ratio: float = 1.5,
     floc_config: FlocculationConfig = None,
     crop_black_background: bool = True,
-) -> List[DetectionResult]:
+) -> list[DetectionResult]:
     """Detect grains from raw image using the v6 pipeline.
 
     Args:

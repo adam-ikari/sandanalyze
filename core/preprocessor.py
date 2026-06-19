@@ -4,8 +4,6 @@ Provides configurable preprocessing pipeline to convert raw sand images
 into binary masks suitable for morphological analysis.
 """
 
-from typing import Tuple
-
 from dataclasses import dataclass
 
 import cv2
@@ -95,7 +93,7 @@ def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.
     return mask
 
 
-def crop_black_background(image: np.ndarray, threshold: int = 30) -> Tuple[np.ndarray, Tuple[int, int, int, int]]:
+def crop_black_background(image: np.ndarray, threshold: int = 30) -> tuple[np.ndarray, tuple[int, int, int, int]]:
     """Crop black background from image.
 
     Finds the largest bright connected component and crops to its bounding box.

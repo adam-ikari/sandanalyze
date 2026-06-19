@@ -19,7 +19,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from core.morphology import GrainStatistics
+from core.morphology import GrainMorphology, GrainStatistics
 
 
 def _create_classification_chart(zingg_counts: dict, width: int = 400, height: int = 300) -> str:
@@ -85,7 +85,7 @@ def _create_classification_chart(zingg_counts: dict, width: int = 400, height: i
 
 def generate_pdf_report(
     image_path: str,
-    morphologies: list,
+    morphologies: list[GrainMorphology],
     stats: GrainStatistics,
     output_path: str,
     annotated_image_path: str | None = None,

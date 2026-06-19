@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass, field
 import math
-from typing import List
 
 import cv2
 import numpy as np
@@ -114,9 +113,9 @@ class GrainStatistics:
     # Updated for four-class system
     zingg_counts: dict = field(default_factory=lambda: {"spherical": 0, "rod-like": 0, "discoidal": 0, "flocculation": 0})
     zingg_colors: dict = field(default_factory=dict)
-    d_eq_values: List[float] = field(default_factory=list)
-    circularity_values: List[float] = field(default_factory=list)
-    sphericity_values: List[float] = field(default_factory=list)
+    d_eq_values: list[float] = field(default_factory=list)
+    circularity_values: list[float] = field(default_factory=list)
+    sphericity_values: list[float] = field(default_factory=list)
     # New: flocculation stats
     flocculation_count: int = 0
     flocculation_ratio: float = 0.0
@@ -219,7 +218,7 @@ def compute_morphology(contour: np.ndarray, mask: np.ndarray) -> GrainMorphology
     )
 
 
-def compute_statistics(morphologies: List[GrainMorphology]) -> GrainStatistics:
+def compute_statistics(morphologies: list[GrainMorphology]) -> GrainStatistics:
     """Compute aggregate statistics across multiple grains.
 
     Args:
@@ -231,7 +230,7 @@ def compute_statistics(morphologies: List[GrainMorphology]) -> GrainStatistics:
     if not morphologies:
         return GrainStatistics(count=0)
 
-    def _stats(values: List[float]) -> tuple[float, float, float]:
+    def _stats(values: list[float]) -> tuple[float, float, float]:
         arr = np.array(values)
         mean = float(np.mean(arr))
         std = float(np.std(arr))
