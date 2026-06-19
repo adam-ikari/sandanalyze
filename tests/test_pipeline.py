@@ -158,3 +158,52 @@ class TestRunDetectionPipeline:
         floc_morphs = [m for m in morphologies if m.is_flocculation]
         for m in floc_morphs:
             assert m.shape_class == "flocculation"
+
+    def test_grayscale_image(self):
+        """Should accept grayscale images."""
+        from core.pipeline import run_detection_pipeline
+
+        image = np.full((400, 400), 50, dtype=np.uint8)
+        noise = np.random.randint(0, 20, (400, 400), dtype=np.uint8)
+        image = cv2.add(image, noise)
+        cv2.circle(image, (200, 200), 35, 200, -1)
+
+        config = PreprocessConfig(adaptive_block_size=11, morph_kernel_size=3, morph_open_iter=1)
+        grains, morphologies, stats = run_detection_pipeline(
+            image, config, min_area=50, crop_black_background=False
+        )
+
+        assert len(grains) > 0
+
+    def test_crop_black_background(self):
+        """Should work with crop_black_background=True."""
+        from core.pipeline import run_detection_pipeline
+
+        image = np.zeros((400, 400, 3), dtype=np.uint8)
+        cv2.rectangle(image, (50, 50), (350, 350), (220, 220, 220), -1)
+        cv2.circle(image, (200, 200), 30, (80, 80, 80), -1)
+
+        config = PreprocessConfig(adaptive_block_size=11, morph_kernel_size=3, morph_open_iter=1)
+        grains, morphologies, stats = run_detection_pipeline(
+            image, config, min_area=50, crop_black_background=True
+        )
+
+        assert len(grains) > 0
+
+    def test_hull_expansion_ratio(self):
+        """Should respect hull_expansion_ratio parameter."""
+        from core.pipeline import run_detection_pipeline
+
+        image = _make_test_image()
+        cv2.circle(image, (200, 200), 35, (200, 200, 200), -1)
+        config = PreprocessConfig(adaptive_block_size=11, morph_kernel_size=3, morph_open_iter=1)
+
+        grains_low, _, _ = run_detection_pipeline(
+            image, config, min_area=50, hull_expansion_ratio=1.2, crop_black_background=False
+        )
+        grains_high, _, _ = run_detection_pipeline(
+            image, config, min_area=50, hull_expansion_ratio=5.0, crop_black_background=False
+        )
+
+        assert len(grains_low) > 0
+        assert len(grains_high) > 0
