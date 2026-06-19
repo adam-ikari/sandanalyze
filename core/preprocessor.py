@@ -25,13 +25,13 @@ class PreprocessConfig:
         use_clahe: Whether to apply CLAHE contrast enhancement.
     """
 
-    blur_kernel: int = 5
-    adaptive_block_size: int = 31
+    blur_kernel: int = 7
+    adaptive_block_size: int = 41
     adaptive_c: int = 5
     morph_kernel_size: int = 3
     morph_open_iter: int = 1
     morph_close_iter: int = 1
-    min_area: int = 1000
+    min_area: int = 800
     use_clahe: bool = True
 
 
