@@ -20,7 +20,6 @@ from core.morphology import (
 )
 from core.preprocessor import PreprocessConfig, preprocess, auto_tune_params, filter_edge_grains
 from core.report import generate_pdf_report
-from core.yolo_detector import YOLODetector, refine_with_yolo
 
 __all__ = [
     # Preprocessing
@@ -57,7 +56,4 @@ __all__ = [
     "process_single_image",
     "BatchResult",
     "BatchSummary",
-    # YOLO
-    "YOLODetector",
-    "refine_with_yolo",
 ]
