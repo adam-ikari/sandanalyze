@@ -11,13 +11,12 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from core.classifier import classify_grain
-from core.detector import detect_grains, FlocculationConfig
+from core.detector import FlocculationConfig
 from core.exporter import export_csv, export_annotated_image
-from core.morphology import compute_morphology, compute_statistics, GrainMorphology, GrainStatistics
+from core.morphology import GrainMorphology, GrainStatistics
+from core.pipeline import run_detection_pipeline
 from core.preprocessor import PreprocessConfig
 from core.report import generate_pdf_report
-from core.traditional import GrainContour
 
 
 @dataclass
@@ -96,30 +95,15 @@ def process_single_image(
             result.error_message = f"Failed to load image: {image_path}"
             return result
 
-        # Detect grains using v6 single-step pipeline
-        detections = detect_grains(
-            image,
+        # Run shared detection pipeline
+        grains, morphologies, stats = run_detection_pipeline(
+            image=image,
             config=config,
             min_area=config.min_area,
             max_area=15000,  # EXP003 default
             border_margin=border_margin,
             floc_config=floc_config,
         )
-
-        # Compute morphology and classify
-        morphologies = []
-        grains = []
-        for d in detections:
-            gc = GrainContour(contour=d.contour, mask=d.mask)
-            grains.append(gc)
-            morph = compute_morphology(d.contour, d.mask)
-            morph.shape_class = classify_grain(morph.aspect_ratio, d.is_flocculation)
-            morph.is_flocculation = d.is_flocculation
-            morph.confidence = 0.9 if d.is_flocculation else 0.95
-            morphologies.append(morph)
-
-        # Compute statistics
-        stats = compute_statistics(morphologies)
 
         # Export results
         basename = Path(image_path).stem
