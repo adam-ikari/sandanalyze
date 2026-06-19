@@ -214,7 +214,8 @@ def detect_grains(
 
         # Post-processing: filter out likely noise/fragments
         # Small, non-circular detections are likely noise
-        if area < 1000 and circularity < 0.3:
+        # Relaxed threshold: allow small grains if they are somewhat circular
+        if area < 1500 and circularity < 0.15:
             continue
 
         # Hull smoothing / mask filling
