@@ -8,6 +8,14 @@ import numpy as np
 
 
 @dataclass
+class GrainContour:
+    """Represents a detected grain via its contour and binary mask."""
+
+    contour: np.ndarray
+    mask: np.ndarray
+
+
+@dataclass
 class GrainMorphology:
     """Morphological parameters for a single sand grain."""
 

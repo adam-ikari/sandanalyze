@@ -13,11 +13,11 @@ from core.detector import detect_grains, FlocculationConfig
 from core.morphology import (
     compute_morphology,
     compute_statistics,
+    GrainContour,
     GrainMorphology,
     GrainStatistics,
 )
 from core.preprocessor import PreprocessConfig
-from core.traditional import GrainContour
 
 
 def run_detection_pipeline(
@@ -34,7 +34,7 @@ def run_detection_pipeline(
 
     Steps:
         1. Detect grains using :func:`core.detector.detect_grains`.
-        2. Build :class:`core.traditional.GrainContour` objects.
+        2. Build :class:`core.morphology.GrainContour` objects.
         3. Compute morphology for each grain.
         4. Classify each grain (Zingg + flocculation).
         5. Compute aggregate statistics.

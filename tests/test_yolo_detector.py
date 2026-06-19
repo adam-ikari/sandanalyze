@@ -34,7 +34,7 @@ class TestRefineWithYOLO:
 
     def test_refine_without_yolo_returns_traditional(self) -> None:
         """When YOLO unavailable, should return traditional grains."""
-        from core.traditional import GrainContour
+        from core.morphology import GrainContour
 
         # Create a mock traditional grain
         contour = np.array([[[0, 0]], [[10, 0]], [[10, 10]], [[0, 10]]])

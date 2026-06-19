@@ -6,8 +6,8 @@ import cv2
 import numpy as np
 import pytest
 
+from core.detector import detect_grains as detect_grains_v6
 from core.preprocessor import PreprocessConfig, preprocess
-from core.traditional import detect_grains
 from core.morphology import compute_morphology, compute_statistics
 
 
@@ -25,18 +25,19 @@ class TestFullPipelineSynthetic:
         assert set(np.unique(mask).tolist()).issubset({0, 255})
         assert np.sum(mask) > 0, "Preprocessed mask should contain foreground pixels"
 
-        # Step 2: Detect grains
-        grains = detect_grains(mask, min_area=50)
-        assert len(grains) > 0, "Should detect at least one grain"
+        # Step 2: Detect grains using v6 pipeline
+        image_color = cv2.cvtColor(sample_grain_image, cv2.COLOR_GRAY2BGR)
+        results = detect_grains_v6(image_color, config, min_area=50, crop_black_background=False)
+        assert len(results) > 0, "Should detect at least one grain"
 
         # Step 3: Compute morphology for each grain
         morphologies = []
-        for grain in grains:
-            morph = compute_morphology(grain.contour, grain.mask)
+        for result in results:
+            morph = compute_morphology(result.contour, result.mask)
             morphologies.append(morph)
 
         # Verify morphologies are computed
-        assert len(morphologies) == len(grains)
+        assert len(morphologies) == len(results)
         for morph in morphologies:
             assert morph.area > 0
             assert morph.perimeter > 0
@@ -54,7 +55,7 @@ class TestFullPipelineSynthetic:
         stats = compute_statistics(morphologies)
 
         # Verify statistics
-        assert stats.count == len(grains)
+        assert stats.count == len(results)
         assert stats.area_mean > 0
         assert stats.area_std >= 0
         assert stats.area_median > 0
@@ -102,17 +103,18 @@ class TestFullPipelineRealImage:
         assert set(np.unique(mask).tolist()).issubset({0, 255})
         assert np.sum(mask) > 0, "Preprocessed mask should contain foreground pixels"
 
-        # Step 2: Detect grains
-        grains = detect_grains(mask, min_area=50)
-        assert len(grains) > 0, "Should detect at least one grain in real image"
+        # Step 2: Detect grains using v6 pipeline
+        image_color = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        results = detect_grains_v6(image_color, config, min_area=50, crop_black_background=False)
+        assert len(results) > 0, "Should detect at least one grain in real image"
 
         # Step 3: Compute morphology for each grain
         morphologies = []
-        for grain in grains:
-            morph = compute_morphology(grain.contour, grain.mask)
+        for result in results:
+            morph = compute_morphology(result.contour, result.mask)
             morphologies.append(morph)
 
-        assert len(morphologies) == len(grains)
+        assert len(morphologies) == len(results)
         for morph in morphologies:
             assert morph.area > 0
             assert morph.perimeter > 0
@@ -130,7 +132,7 @@ class TestFullPipelineRealImage:
         stats = compute_statistics(morphologies)
 
         # Verify statistics are reasonable
-        assert stats.count == len(grains)
+        assert stats.count == len(results)
         assert stats.count > 0
         assert stats.area_mean > 0
         assert stats.area_std >= 0

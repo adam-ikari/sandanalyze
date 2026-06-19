@@ -5,9 +5,8 @@ import numpy as np
 import pytest
 
 from core.detector import FlocculationConfig
-from core.morphology import GrainStatistics
+from core.morphology import GrainContour, GrainStatistics
 from core.preprocessor import PreprocessConfig
-from core.traditional import GrainContour
 
 
 def _make_test_image(size=400):

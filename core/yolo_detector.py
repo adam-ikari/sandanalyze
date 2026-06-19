@@ -14,7 +14,7 @@ import cv2
 import numpy as np
 
 from core.model_manager import ensure_model_available, get_model_path
-from core.traditional import GrainContour
+from core.morphology import GrainContour
 
 logger = logging.getLogger(__name__)
 
