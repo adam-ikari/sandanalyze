@@ -72,14 +72,66 @@ to estimate noise. Higher values indicate more noise/clutter.
     return float(combined_noise)
 
 
+def analyze_image_characteristics(image: np.ndarray) -> dict[str, float]:
+    """Analyze image characteristics for adaptive parameter tuning.
+
+    Extracts multiple features from the image to determine optimal
+    preprocessing and detection parameters.
+
+    Args:
+        image: Input microscope image (grayscale or color).
+
+    Returns:
+        Dict with feature names and values:
+            - noise: Estimated noise level
+            - brightness: Mean pixel value (0-255)
+            - contrast: Standard deviation of pixel values
+            - clarity: Laplacian variance (edge sharpness)
+            - texture_complexity: Local std mean
+    """
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
+
+    # Basic statistics
+    brightness = np.mean(gray)
+    contrast = np.std(gray)
+
+    # Noise estimation (combined method)
+    laplacian = cv2.Laplacian(gray, cv2.CV_64F)
+    laplacian_noise = np.std(laplacian)
+
+    kernel_size = 5
+    local_mean = cv2.blur(gray.astype(np.float32), (kernel_size, kernel_size))
+    local_sq_mean = cv2.blur((gray.astype(np.float32) ** 2), (kernel_size, kernel_size))
+    local_std = np.sqrt(np.abs(local_sq_mean - local_mean ** 2))
+    local_noise = np.mean(local_std)
+
+    noise = 0.6 * laplacian_noise + 0.4 * local_noise
+
+    # Edge sharpness (clarity)
+    clarity = np.var(laplacian)
+
+    # Texture complexity
+    texture_complexity = np.mean(local_std)
+
+    return {
+        "noise": float(noise),
+        "brightness": float(brightness),
+        "contrast": float(contrast),
+        "clarity": float(clarity),
+        "texture_complexity": float(texture_complexity),
+    }
+
+
 def auto_tune_for_microscope(
     image: np.ndarray,
 ) -> tuple[PreprocessConfig, dict[str, int | float]]:
-    """Automatically tune parameters based on image noise level.
+    """Automatically tune parameters based on image characteristics.
 
-    Analyzes image noise and returns appropriate preprocessing parameters
-    AND detection parameters. The detection parameters (min_area, max_area)
-    are passed directly to detect_grains().
+    Analyzes image noise, brightness, contrast, and texture to select
+    appropriate preprocessing and detection parameters.
 
     Args:
         image: Input microscope image.
@@ -90,44 +142,53 @@ def auto_tune_for_microscope(
             - min_area: Minimum grain area for detect_grains()
             - max_area: Maximum grain area for detect_grains()
     """
-    noise = estimate_image_noise(image)
+    features = analyze_image_characteristics(image)
+    noise = features["noise"]
+    brightness = features["brightness"]
+    contrast = features["contrast"]
 
+    # Adjust based on noise level
     if noise < 20:
         # Low noise - can afford lower min_area
-        return (
-            PreprocessConfig(
-                blur_kernel=3,
-                adaptive_block_size=51,
-                adaptive_c=5,
-                morph_kernel_size=3,
-                min_area=600,
-            ),
-            {"min_area": 600, "max_area": 15000},
-        )
+        blur_kernel = 3
+        min_area = 600
     elif noise < 40:
         # Moderate noise - balanced parameters
-        return (
-            PreprocessConfig(
-                blur_kernel=5,
-                adaptive_block_size=51,
-                adaptive_c=5,
-                morph_kernel_size=3,
-                min_area=800,
-            ),
-            {"min_area": 800, "max_area": 15000},
-        )
+        blur_kernel = 5
+        min_area = 800
     else:
         # High noise - conservative parameters
-        return (
-            PreprocessConfig(
-                blur_kernel=7,
-                adaptive_block_size=51,
-                adaptive_c=5,
-                morph_kernel_size=5,
-                min_area=1200,
-            ),
-            {"min_area": 1200, "max_area": 15000},
-        )
+        blur_kernel = 7
+        min_area = 1200
+
+    # Adjust based on brightness
+    if brightness < 80:
+        # Dark image - lower adaptive_c to capture faint grains
+        adaptive_c = max(3, 5 - int((80 - brightness) / 20))
+    elif brightness > 180:
+        # Bright image - higher adaptive_c to reduce over-detection
+        adaptive_c = min(10, 5 + int((brightness - 180) / 20))
+    else:
+        adaptive_c = 5
+
+    # Adjust based on contrast
+    if contrast < 30:
+        # Low contrast - larger blur to reduce noise
+        blur_kernel = max(blur_kernel, 5)
+        adaptive_block_size = 61
+    else:
+        adaptive_block_size = 51
+
+    return (
+        PreprocessConfig(
+            blur_kernel=blur_kernel,
+            adaptive_block_size=adaptive_block_size,
+            adaptive_c=adaptive_c,
+            morph_kernel_size=3,
+            min_area=min_area,
+        ),
+        {"min_area": min_area, "max_area": 15000},
+    )
 
 
 def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.ndarray:
