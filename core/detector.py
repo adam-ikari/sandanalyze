@@ -212,6 +212,11 @@ def detect_grains(
             elif conditions_met == 1 and circularity < 0.1 and convexity < 0.5:
                 is_floc = True
 
+        # Post-processing: filter out likely noise/fragments
+        # Small, non-circular detections are likely noise
+        if area < 1000 and circularity < 0.3:
+            continue
+
         # Hull smoothing / mask filling
         if hull_area / area < hull_expansion_ratio:
             final_contour = hull
