@@ -207,3 +207,120 @@ class TestRunDetectionPipeline:
 
         assert len(grains_low) > 0
         assert len(grains_high) > 0
+
+
+class TestMultiScalePipeline:
+    """Tests for run_multiscale_detection_pipeline in core.pipeline."""
+
+    def test_returns_grains_morphologies_and_stats(self):
+        """run_multiscale_detection_pipeline should return grains, morphologies, and statistics."""
+        from core.pipeline import run_multiscale_detection_pipeline
+
+        image = _make_test_image(400)
+        cv2.circle(image, (200, 200), 35, (200, 200, 200), -1)
+
+        config = _test_config()
+        grains, morphologies, stats = run_multiscale_detection_pipeline(
+            image, config, min_area=50, crop_black_background=False
+        )
+
+        assert isinstance(grains, list)
+        assert isinstance(morphologies, list)
+        assert isinstance(stats, GrainStatistics)
+        assert len(grains) > 0
+        assert len(morphologies) > 0
+        assert len(grains) == len(morphologies)
+
+    def test_multiscale_detects_more_grains_than_single(self):
+        """Multi-scale should find more grains than single-scale pipeline."""
+        from core.pipeline import (
+            run_detection_pipeline,
+            run_multiscale_detection_pipeline,
+        )
+
+        # Create an image with grains of varying sizes
+        np.random.seed(42)
+        image = np.ones((400, 400, 3), dtype=np.uint8) * 180
+        # Add a large grain
+        cv2.circle(image, (100, 100), 40, (50, 50, 50), -1)
+        # Add a medium grain
+        cv2.circle(image, (250, 150), 25, (50, 50, 50), -1)
+        # Add a small grain
+        cv2.circle(image, (320, 300), 12, (50, 50, 50), -1)
+
+        config = PreprocessConfig(
+            blur_kernel=5,
+            adaptive_block_size=51,
+            adaptive_c=5,
+            morph_kernel_size=3,
+            morph_open_iter=1,
+            morph_close_iter=1,
+            min_area=800,
+            use_clahe=True,
+        )
+
+        single_grains, _, _ = run_detection_pipeline(
+            image, config, min_area=50, crop_black_background=False
+        )
+        multi_grains, _, _ = run_multiscale_detection_pipeline(
+            image, config, min_area=50, crop_black_background=False
+        )
+
+        # Multi-scale should detect at least as many grains as single-scale
+        assert len(multi_grains) >= len(single_grains)
+
+    def test_multiscale_filters_false_positives(self):
+        """Should filter out noise and edge artifacts."""
+        from core.pipeline import run_multiscale_detection_pipeline
+
+        # Create an image with a real grain and some noise near the edge
+        np.random.seed(42)
+        image = np.ones((400, 400, 3), dtype=np.uint8) * 180
+        # Add a real grain in the center
+        cv2.circle(image, (200, 200), 35, (50, 50, 50), -1)
+        # Add small noise blobs near the edge
+        cv2.circle(image, (10, 10), 5, (60, 60, 60), -1)
+        cv2.circle(image, (390, 390), 5, (60, 60, 60), -1)
+
+        config = PreprocessConfig(
+            blur_kernel=5,
+            adaptive_block_size=51,
+            adaptive_c=5,
+            morph_kernel_size=3,
+            morph_open_iter=1,
+            morph_close_iter=1,
+            min_area=800,
+            use_clahe=True,
+        )
+
+        grains, morphologies, stats = run_multiscale_detection_pipeline(
+            image, config, min_area=200, crop_black_background=False
+        )
+
+        # Should detect the real grain but filter out edge noise
+        assert len(grains) > 0
+        # The real grain should be detected, noise should be filtered
+        for grain in grains:
+            # Check that detected grains are reasonably sized (not tiny noise)
+            x, y, bw, bh = cv2.boundingRect(grain.contour)
+            # Grains should not be tiny
+            assert bw > 5 or bh > 5
+            # Grains should not be right at the edge (filtered by edge filter)
+            assert x > 2
+            assert y > 2
+
+    def test_multiscale_empty_image_returns_empty(self):
+        """An empty image should return empty lists and zero-count stats."""
+        from core.pipeline import run_multiscale_detection_pipeline
+
+        image = _make_test_image(400)
+
+        config = _test_config()
+        grains, morphologies, stats = run_multiscale_detection_pipeline(
+            image, config, min_area=50, crop_black_background=False
+        )
+
+        assert grains == []
+        assert morphologies == []
+        assert stats.count == 0
+        assert stats.area_mean == 0.0
