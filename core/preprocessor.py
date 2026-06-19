@@ -146,38 +146,56 @@ def auto_tune_for_microscope(
     noise = features["noise"]
     brightness = features["brightness"]
     contrast = features["contrast"]
+    clarity = features["clarity"]
 
     # Adjust based on noise level
-    if noise < 20:
-        # Low noise - can afford lower min_area
+    # Noise ranges from 1.2 to 7.6 across our dataset
+    if noise < 3:
+        # Very low noise - can afford lower min_area
+        blur_kernel = 3
+        min_area = 500
+    elif noise < 5:
+        # Low noise
         blur_kernel = 3
         min_area = 600
-    elif noise < 40:
-        # Moderate noise - balanced parameters
+    elif noise < 6:
+        # Moderate noise
         blur_kernel = 5
         min_area = 800
     else:
         # High noise - conservative parameters
         blur_kernel = 7
-        min_area = 1200
+        min_area = 1000
 
     # Adjust based on brightness
-    if brightness < 80:
+    # Brightness ranges from 37 to 56 across our dataset
+    if brightness < 45:
         # Dark image - lower adaptive_c to capture faint grains
-        adaptive_c = max(3, 5 - int((80 - brightness) / 20))
-    elif brightness > 180:
-        # Bright image - higher adaptive_c to reduce over-detection
-        adaptive_c = min(10, 5 + int((brightness - 180) / 20))
-    else:
+        adaptive_c = 3
+    elif brightness < 50:
+        adaptive_c = 4
+    elif brightness < 53:
         adaptive_c = 5
+    else:
+        # Bright image - higher adaptive_c to reduce over-detection
+        adaptive_c = 6
 
     # Adjust based on contrast
-    if contrast < 30:
+    # Contrast ranges from 55 to 77 across our dataset
+    if contrast < 65:
         # Low contrast - larger blur to reduce noise
         blur_kernel = max(blur_kernel, 5)
         adaptive_block_size = 61
+    elif contrast > 75:
+        # High contrast - smaller block for finer detail
+        adaptive_block_size = 41
     else:
         adaptive_block_size = 51
+
+    # Adjust based on clarity (edge sharpness)
+    # Higher clarity = sharper edges = can use smaller blur
+    if clarity > 50:
+        blur_kernel = min(blur_kernel, 5)
 
     return (
         PreprocessConfig(
