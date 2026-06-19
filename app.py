@@ -15,16 +15,14 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
-from core.classifier import classify_grain
 from core.detector import detect_grains, FlocculationConfig
 from core.morphology import (
     GrainMorphology,
     GrainStatistics,
-    compute_morphology,
-    compute_statistics,
     get_classification_color,
     CLASSIFICATION_COLORS,
 )
+from core.pipeline import run_detection_pipeline
 from core.preprocessor import PreprocessConfig, preprocess, auto_tune_params
 from core.report import generate_pdf_report
 from core.exporter import export_csv, export_annotated_image
@@ -324,12 +322,12 @@ with st.sidebar:
                     st.info(f"Auto-tuned: blur={config.blur_kernel}, "
                             f"block={config.adaptive_block_size}")
 
-                # Use v6 single-step detection with EXP003 default parameters
-                results = detect_grains(
-                    image,
-                    config,
-                    min_area=config.min_area,  # Use config value
-                    max_area=15000,  # EXP003 default
+                # Run the shared detection pipeline
+                grains, morphologies, statistics = run_detection_pipeline(
+                    image=image,
+                    config=config,
+                    min_area=config.min_area,
+                    max_area=15000,
                     border_margin=st.session_state.border_margin,
                     hull_expansion_ratio=st.session_state.hull_expansion_ratio,
                     floc_config=st.session_state.floc_config if st.session_state.use_flocculation else None,
@@ -337,26 +335,9 @@ with st.sidebar:
                 )
 
                 st.session_state.detection_method = "traditional"
-
-                # Convert DetectionResult to GrainContour + compute morphology
-                from core.traditional import GrainContour
-                grains = []
-                morphologies = []
-                for r in results:
-                    gc = GrainContour(contour=r.contour, mask=r.mask)
-                    grains.append(gc)
-                    morph = compute_morphology(r.contour, r.mask)
-                    # Classify
-                    morph.shape_class = classify_grain(
-                        morph.aspect_ratio, r.is_flocculation
-                    )
-                    morph.is_flocculation = r.is_flocculation
-                    morph.confidence = 0.9 if r.is_flocculation else 0.95
-                    morphologies.append(morph)
-
                 st.session_state.grains = grains
                 st.session_state.morphologies = morphologies
-                st.session_state.statistics = compute_statistics(morphologies)
+                st.session_state.statistics = statistics
                 st.session_state.last_processing_time = time.time() - start
             except Exception as exc:
                 st.error(f"Detection error: {exc}")
