@@ -164,7 +164,19 @@ def detect_grains(
 
         # Filter out shapes with very low circularity (likely incomplete/edge grains)
         # Skip this filter for very small grains as they naturally have lower circularity
-        if circularity < 0.02 and area > 5000:
+        # Also skip for potential flocculation clusters (low circularity + low convexity)
+        # Compute convexity first to check if it's a flocculation
+        hull = cv2.convexHull(cnt_global)
+        hull_area = cv2.contourArea(hull)
+        convexity = area / hull_area if hull_area > 0 else 0
+
+        is_potential_floc = (
+            area >= floc_config.min_area and
+            circularity < 0.1 and
+            convexity < 0.5
+        )
+
+        if circularity < 0.02 and area > 5000 and not is_potential_floc:
             continue
 
         # Compute aspect ratio from bounding rect
@@ -179,11 +191,6 @@ def detect_grains(
         else:
             major_axis = np.sqrt(area * 4 / np.pi)
             minor_axis = major_axis
-
-        # Compute hull and convexity
-        hull = cv2.convexHull(cnt_global)
-        hull_area = cv2.contourArea(hull)
-        convexity = area / hull_area if hull_area > 0 else 0
 
         # Flocculation detection (inline)
         # Require at least 2 out of 3 conditions to be met for more strict detection
