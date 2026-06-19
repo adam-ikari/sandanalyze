@@ -38,8 +38,8 @@ class PreprocessConfig:
 def estimate_image_noise(image: np.ndarray) -> float:
     """Estimate noise level in a microscope image.
 
-    Uses the standard deviation of the Laplacian to estimate noise.
-    Higher values indicate more noise/clutter.
+    Uses a combination of Laplacian variance and local standard deviation
+to estimate noise. Higher values indicate more noise/clutter.
 
     Args:
         image: Input image (grayscale or color).
@@ -52,11 +52,24 @@ def estimate_image_noise(image: np.ndarray) -> float:
     else:
         gray = image.copy()
 
-    # Use Laplacian variance as noise estimate
+    # Method 1: Laplacian variance (edge-based noise estimate)
     laplacian = cv2.Laplacian(gray, cv2.CV_64F)
-    noise = np.std(laplacian)
+    laplacian_noise = np.std(laplacian)
 
-    return float(noise)
+    # Method 2: Local standard deviation (texture-based noise estimate)
+    # Compute std in small windows to capture local variations
+    kernel_size = 5
+    local_mean = cv2.blur(gray.astype(np.float32), (kernel_size, kernel_size))
+    local_sq_mean = cv2.blur((gray.astype(np.float32) ** 2), (kernel_size, kernel_size))
+    local_std = np.sqrt(np.abs(local_sq_mean - local_mean ** 2))
+    local_noise = np.mean(local_std)
+
+    # Combine both methods (weighted average)
+    # Laplacian is more sensitive to high-frequency noise
+    # Local std is more sensitive to texture variations
+    combined_noise = 0.6 * laplacian_noise + 0.4 * local_noise
+
+    return float(combined_noise)
 
 
 def auto_tune_for_microscope(
