@@ -32,7 +32,13 @@ class FlocculationConfig:
 
 @dataclass
 class DetectionResult:
-    """Result of grain detection."""
+    """Result of grain detection.
+
+    Contains preliminary morphology values computed during detection for
+    filtering purposes (area filtering, flocculation detection, circularity
+    filtering). For authoritative morphology measurements, use
+    :func:`core.morphology.compute_morphology`.
+    """
 
     contour: np.ndarray
     mask: np.ndarray
