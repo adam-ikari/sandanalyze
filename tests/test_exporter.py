@@ -9,8 +9,7 @@ import numpy as np
 import pytest
 
 from core.exporter import export_annotated_image, export_csv
-from core.morphology import GrainMorphology
-from core.traditional import GrainContour
+from core.morphology import GrainContour, GrainMorphology
 
 
 def _make_sample_morphologies() -> list[GrainMorphology]:

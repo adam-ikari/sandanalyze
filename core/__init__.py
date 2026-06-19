@@ -9,6 +9,7 @@ from core.exporter import export_annotated_image, export_csv
 from core.morphology import (
     GrainMorphology,
     GrainStatistics,
+    GrainContour,
     compute_morphology,
     compute_statistics,
     get_classification_color,
@@ -19,8 +20,6 @@ from core.morphology import (
 )
 from core.preprocessor import PreprocessConfig, preprocess, auto_tune_params, filter_edge_grains
 from core.report import generate_pdf_report
-from core.traditional import GrainContour, detect_grains as detect_grains_traditional
-from core.yolo_detector import YOLODetector, refine_with_yolo
 
 __all__ = [
     # Preprocessing
@@ -39,6 +38,7 @@ __all__ = [
     # Morphology
     "GrainMorphology",
     "GrainStatistics",
+    "GrainContour",
     "compute_morphology",
     "compute_statistics",
     "get_classification_color",
@@ -46,9 +46,6 @@ __all__ = [
     "zingg_classify",
     "CLASSIFICATION_COLORS",
     "ZINGG_COLORS",
-    # Traditional
-    "GrainContour",
-    "detect_grains_traditional",
     # Export
     "export_csv",
     "export_annotated_image",
@@ -59,7 +56,4 @@ __all__ = [
     "process_single_image",
     "BatchResult",
     "BatchSummary",
-    # YOLO
-    "YOLODetector",
-    "refine_with_yolo",
 ]

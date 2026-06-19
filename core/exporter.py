@@ -5,8 +5,7 @@ import csv
 import cv2
 import numpy as np
 
-from core.morphology import GrainMorphology
-from core.traditional import GrainContour
+from core.morphology import GrainContour, GrainMorphology
 
 
 def export_csv(morphologies: list[GrainMorphology], path: str) -> None:

@@ -11,15 +11,15 @@ class TestPreprocessConfig:
     """Tests for the PreprocessConfig dataclass."""
 
     def test_default_values(self):
-        """Test that PreprocessConfig has sensible defaults."""
+        """Test that PreprocessConfig has sensible defaults for microscope images."""
         config = PreprocessConfig()
         assert config.blur_kernel == 5
-        assert config.adaptive_block_size == 31
+        assert config.adaptive_block_size == 51
         assert config.adaptive_c == 5
         assert config.morph_kernel_size == 3
         assert config.morph_open_iter == 1
         assert config.morph_close_iter == 1
-        assert config.min_area == 1000
+        assert config.min_area == 800
         assert config.use_clahe is True
 
 
