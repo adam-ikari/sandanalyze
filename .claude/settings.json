@@ -8,7 +8,9 @@
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "xopkimik26",
     "ANTHROPIC_DEFAULT_OPUS_MODEL": "xopkimik26",
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "xopkimik26",
-    "ANTHROPIC_MODEL": "xopkimik26"
+    "ANTHROPIC_MODEL": "xopkimik26",
+    "CLAUDE_CODE_DISABLE_1M_CONTEXT": 1,
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": 50
   },
   "permissions": {
     "allow": [],
