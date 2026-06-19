@@ -23,7 +23,11 @@ from core.morphology import (
     CLASSIFICATION_COLORS,
 )
 from core.pipeline import run_detection_pipeline
-from core.preprocessor import PreprocessConfig, preprocess, auto_tune_params
+from core.preprocessor import (
+    PreprocessConfig,
+    auto_tune_params,
+    auto_tune_for_microscope,
+)
 from core.report import generate_pdf_report
 from core.exporter import export_csv, export_annotated_image
 
@@ -317,17 +321,20 @@ with st.sidebar:
 
                 # Auto-tune if enabled
                 if st.session_state.use_auto_tune:
-                    config = auto_tune_params(image)
+                    config, detection_params = auto_tune_for_microscope(image)
                     st.session_state.config = config
-                    st.info(f"Auto-tuned: blur={config.blur_kernel}, "
-                            f"block={config.adaptive_block_size}")
+                    st.info(
+                        f"Auto-tuned: blur={config.blur_kernel}, "
+                        f"block={config.adaptive_block_size}, "
+                        f"min_area={detection_params['min_area']}"
+                    )
 
                 # Run the shared detection pipeline
                 grains, morphologies, statistics = run_detection_pipeline(
                     image=image,
                     config=config,
-                    min_area=config.min_area,
-                    max_area=15000,
+                    min_area=detection_params.get("min_area", config.min_area),
+                    max_area=detection_params.get("max_area", 15000),
                     border_margin=st.session_state.border_margin,
                     hull_expansion_ratio=st.session_state.hull_expansion_ratio,
                     floc_config=st.session_state.floc_config if st.session_state.use_flocculation else None,
