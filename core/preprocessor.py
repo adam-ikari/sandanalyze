@@ -59,47 +59,61 @@ def estimate_image_noise(image: np.ndarray) -> float:
     return float(noise)
 
 
-def auto_tune_for_microscope(image: np.ndarray) -> PreprocessConfig:
+def auto_tune_for_microscope(
+    image: np.ndarray,
+) -> tuple[PreprocessConfig, dict[str, int | float]]:
     """Automatically tune parameters based on image noise level.
 
-    Analyzes image noise and returns appropriate parameters:
-    - Low noise:  lower min_area, smaller blur (capture small grains)
-    - High noise: higher min_area, larger blur (filter noise)
+    Analyzes image noise and returns appropriate preprocessing parameters
+    AND detection parameters. The detection parameters (min_area, max_area)
+    are passed directly to detect_grains().
 
     Args:
         image: Input microscope image.
 
     Returns:
-        Tuned PreprocessConfig.
+        Tuple of (PreprocessConfig, detection_params dict).
+        detection_params contains:
+            - min_area: Minimum grain area for detect_grains()
+            - max_area: Maximum grain area for detect_grains()
     """
     noise = estimate_image_noise(image)
 
     if noise < 20:
         # Low noise - can afford lower min_area
-        return PreprocessConfig(
-            blur_kernel=3,
-            adaptive_block_size=51,
-            adaptive_c=5,
-            morph_kernel_size=3,
-            min_area=600,
+        return (
+            PreprocessConfig(
+                blur_kernel=3,
+                adaptive_block_size=51,
+                adaptive_c=5,
+                morph_kernel_size=3,
+                min_area=600,
+            ),
+            {"min_area": 600, "max_area": 15000},
         )
     elif noise < 40:
         # Moderate noise - balanced parameters
-        return PreprocessConfig(
-            blur_kernel=5,
-            adaptive_block_size=51,
-            adaptive_c=5,
-            morph_kernel_size=3,
-            min_area=800,
+        return (
+            PreprocessConfig(
+                blur_kernel=5,
+                adaptive_block_size=51,
+                adaptive_c=5,
+                morph_kernel_size=3,
+                min_area=800,
+            ),
+            {"min_area": 800, "max_area": 15000},
         )
     else:
         # High noise - conservative parameters
-        return PreprocessConfig(
-            blur_kernel=7,
-            adaptive_block_size=51,
-            adaptive_c=5,
-            morph_kernel_size=5,
-            min_area=1200,
+        return (
+            PreprocessConfig(
+                blur_kernel=7,
+                adaptive_block_size=51,
+                adaptive_c=5,
+                morph_kernel_size=5,
+                min_area=1200,
+            ),
+            {"min_area": 1200, "max_area": 15000},
         )
 
 
