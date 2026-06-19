@@ -25,14 +25,82 @@ class PreprocessConfig:
         use_clahe: Whether to apply CLAHE contrast enhancement.
     """
 
-    blur_kernel: int = 7
-    adaptive_block_size: int = 41
+    blur_kernel: int = 5
+    adaptive_block_size: int = 51
     adaptive_c: int = 5
     morph_kernel_size: int = 3
     morph_open_iter: int = 1
     morph_close_iter: int = 1
     min_area: int = 800
     use_clahe: bool = True
+
+
+def estimate_image_noise(image: np.ndarray) -> float:
+    """Estimate noise level in a microscope image.
+
+    Uses the standard deviation of the Laplacian to estimate noise.
+    Higher values indicate more noise/clutter.
+
+    Args:
+        image: Input image (grayscale or color).
+
+    Returns:
+        Noise level (0-255, higher = more noise).
+    """
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
+
+    # Use Laplacian variance as noise estimate
+    laplacian = cv2.Laplacian(gray, cv2.CV_64F)
+    noise = np.std(laplacian)
+
+    return float(noise)
+
+
+def auto_tune_for_microscope(image: np.ndarray) -> PreprocessConfig:
+    """Automatically tune parameters based on image noise level.
+
+    Analyzes image noise and returns appropriate parameters:
+    - Low noise:  lower min_area, smaller blur (capture small grains)
+    - High noise: higher min_area, larger blur (filter noise)
+
+    Args:
+        image: Input microscope image.
+
+    Returns:
+        Tuned PreprocessConfig.
+    """
+    noise = estimate_image_noise(image)
+
+    if noise < 20:
+        # Low noise - can afford lower min_area
+        return PreprocessConfig(
+            blur_kernel=3,
+            adaptive_block_size=51,
+            adaptive_c=5,
+            morph_kernel_size=3,
+            min_area=600,
+        )
+    elif noise < 40:
+        # Moderate noise - balanced parameters
+        return PreprocessConfig(
+            blur_kernel=5,
+            adaptive_block_size=51,
+            adaptive_c=5,
+            morph_kernel_size=3,
+            min_area=800,
+        )
+    else:
+        # High noise - conservative parameters
+        return PreprocessConfig(
+            blur_kernel=7,
+            adaptive_block_size=51,
+            adaptive_c=5,
+            morph_kernel_size=5,
+            min_area=1200,
+        )
 
 
 def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.ndarray:

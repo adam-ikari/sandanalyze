@@ -13,8 +13,8 @@ class TestPreprocessConfig:
     def test_default_values(self):
         """Test that PreprocessConfig has sensible defaults for microscope images."""
         config = PreprocessConfig()
-        assert config.blur_kernel == 7
-        assert config.adaptive_block_size == 41
+        assert config.blur_kernel == 5
+        assert config.adaptive_block_size == 51
         assert config.adaptive_c == 5
         assert config.morph_kernel_size == 3
         assert config.morph_open_iter == 1
