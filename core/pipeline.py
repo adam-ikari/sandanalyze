@@ -85,7 +85,9 @@ def run_detection_pipeline(
 
         morph = compute_morphology(result.contour, result.mask)
         morph.is_flocculation = result.is_flocculation
-        morph.shape_class = classify_grain(morph.aspect_ratio, result.is_flocculation)
+        morph.shape_class = classify_grain(
+            morph.aspect_ratio, result.is_flocculation, circularity=morph.circularity
+        )
         morph.confidence = 0.9 if result.is_flocculation else 0.95
         morphologies.append(morph)
 

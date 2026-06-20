@@ -15,7 +15,8 @@ class ZinggClassifier:
 
 
 def classify_grain(aspect_ratio: float, is_flocculation: bool,
-                     classifier: ZinggClassifier = None) -> str:
+                     classifier: ZinggClassifier = None,
+                     circularity: float = None) -> str:
     """Classify a grain using Zingg + Flocculation system.
 
     Priority: Flocculation > Zingg classification
@@ -24,6 +25,8 @@ def classify_grain(aspect_ratio: float, is_flocculation: bool,
         aspect_ratio: Major axis / minor axis ratio.
         is_flocculation: Whether the grain is detected as flocculation.
         classifier: ZinggClassifier instance. Uses defaults if None.
+        circularity: Optional circularity for better classification. If provided,
+                    helps distinguish rod-like from discoidal.
 
     Returns:
         One of: "spherical", "rod-like", "discoidal", "flocculation"
@@ -35,12 +38,17 @@ def classify_grain(aspect_ratio: float, is_flocculation: bool,
     if is_flocculation:
         return "flocculation"
 
-    # Zingg classification
+    # Zingg classification with circularity correction
     if aspect_ratio < classifier.spherical_threshold:
         return "spherical"
     elif aspect_ratio < classifier.bladed_threshold:
         return "rod-like"
     else:
+        # For high aspect_ratio, use circularity to distinguish
+        # rod-like vs discoidal
+        if circularity is not None and circularity < 0.3:
+            # Low circularity with high aspect_ratio = elongated rod-like
+            return "rod-like"
         return "discoidal"
 
 

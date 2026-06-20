@@ -320,6 +320,7 @@ with st.sidebar:
                 config = st.session_state.config
 
                 # Auto-tune if enabled
+                detection_params = {}
                 if st.session_state.use_auto_tune:
                     config, detection_params = auto_tune_for_microscope(image)
                     st.session_state.config = config
