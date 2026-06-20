@@ -15,6 +15,7 @@ from core.feature_filter import (
     filter_edge_false_positives,
     filter_filaments,
     filter_noise,
+    filter_strict,
 )
 from core.morphological_splitter import split_by_concave_points, split_by_watershed
 from core.morphology import (
@@ -181,6 +182,8 @@ def run_multiscale_detection_pipeline(
     candidates = filter_edge_false_positives(candidates, edge_margin=border_margin)
     candidates = filter_noise(candidates, min_area=min_area)
     candidates = filter_filaments(candidates)
+    # Apply strict filtering to remove more false positives
+    candidates = filter_strict(candidates, min_area=min_area)
 
     # Step 6: Integrate with existing detect_grains for final detection
     # Use detect_grains on the original image for robust contour extraction

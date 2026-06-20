@@ -23,7 +23,7 @@ def filter_edge_false_positives(
     """
     return [
         c
-        for c in candidates
+        for c in        candidates
         if not (c.border_distance < edge_margin and c.area < 2000)
     ]
 
@@ -67,3 +67,51 @@ def filter_filaments(
         for c in candidates
         if not (c.aspect_ratio > max_aspect_ratio and c.solidity < min_solidity)
     ]
+
+
+def filter_strict(
+    candidates: list[GrainCandidate],
+    min_area: int = 800,
+    min_circularity: float = 0.15,
+    max_aspect_ratio: float = 4.0,
+    min_solidity: float = 0.6,
+) -> list[GrainCandidate]:
+    """Apply strict filtering to remove false positives.
+
+    This is a stricter version that combines multiple filters:
+    - Remove small components (area < min_area)
+    - Remove irregular shapes (circularity < min_circularity)
+    - Remove very elongated shapes (aspect_ratio > max_aspect_ratio)
+    - Remove low solidity shapes (solidity < min_solidity)
+
+    Args:
+        candidates: List of GrainCandidate objects.
+        min_area: Minimum area threshold.
+        min_circularity: Minimum circularity threshold.
+        max_aspect_ratio: Maximum aspect ratio threshold.
+        min_solidity: Minimum solidity threshold.
+
+    Returns:
+        Filtered list of candidates.
+    """
+    filtered = []
+    for c in candidates:
+        # Filter 1: Too small
+        if c.area < min_area:
+            continue
+
+        # Filter 2: Too irregular (but allow larger grains to be less circular)
+        if c.circularity < min_circularity and c.area < 3000:
+            continue
+
+        # Filter 3: Too elongated
+        if c.aspect_ratio > max_aspect_ratio:
+            continue
+
+        # Filter 4: Too low solidity
+        if c.solidity < min_solidity:
+            continue
+
+        filtered.append(c)
+
+    return filtered
