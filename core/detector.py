@@ -131,15 +131,20 @@ def detect_grains(
 
         # Check if component touches ROI boundary
         touches_border = (
-            lx <= 0 or ly <= 0 or
-            lx + lw >= w or ly + lh >= h
+            lx <= border_margin or ly <= border_margin or
+            lx + lw >= w - border_margin or ly + lh >= h - border_margin
         )
 
-        # Allow border-touching components if large enough to be flocculation
-        if touches_border and area >= floc_config.min_area:
-            allow_border = True
+        # Reject border-touching components unless they are clearly flocculation
+        # and not just edge artifacts
+        if touches_border:
+            # Only allow if it's large enough AND has flocculation characteristics
+            if area >= floc_config.min_area and area <= floc_config.max_area:
+                allow_border = True
+            else:
+                allow_border = False
         else:
-            allow_border = not touches_border
+            allow_border = True
 
         if min_area <= area <= max_area and allow_border:
             filtered[labels == i] = 255
@@ -166,6 +171,12 @@ def detect_grains(
 
         # Compute circularity
         circularity = (4 * np.pi * area) / (perimeter ** 2) if perimeter > 0 else 0
+
+        # Filter out large circular contours that are likely the image border
+        # These have high area and high circularity (close to 1.0)
+        if area > 50000 and circularity > 0.5:
+            # Likely the circular border of the image, skip
+            continue
 
         # Filter out shapes with very low circularity (likely incomplete/edge grains)
         # Skip this filter for very small grains as they naturally have lower circularity
