@@ -68,6 +68,14 @@ class PreprocessConfig:
                 morph_kernel_size=3,
                 min_area=800,
             ),
+            "shadow": cls(
+                blur_kernel=5,
+                adaptive_block_size=91,
+                adaptive_c=2,
+                morph_kernel_size=3,
+                min_area=500,
+                use_clahe=True,
+            ),
         }
         if preset_name not in presets:
             raise ValueError(
@@ -280,7 +288,9 @@ def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.
 
     # 2. Optional CLAHE
     if config.use_clahe:
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        # Use stronger CLAHE for shadow regions
+        clip_limit = 4.0 if config.adaptive_block_size >= 91 else 2.0
+        clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
         gray = clahe.apply(gray)
 
     # 3. Gaussian blur
