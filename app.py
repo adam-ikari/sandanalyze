@@ -67,7 +67,7 @@ DEFAULTS = {
     "border_margin": 5,
     "use_flocculation": True,
     "floc_config": FlocculationConfig(),
-    "use_auto_tune": False,
+    "use_auto_tune": True,
 }
 
 for key, default in DEFAULTS.items():
@@ -277,7 +277,7 @@ with st.sidebar:
             )
 
         use_clahe = st.checkbox("CLAHE Enhancement", value=config.use_clahe)
-        use_auto_tune = st.checkbox("Auto-Tune Parameters", value=False)
+        use_auto_tune = st.checkbox("Auto-Tune Parameters", value=st.session_state.use_auto_tune)
 
         st.session_state.config = PreprocessConfig(
             blur_kernel=blur_kernel,
