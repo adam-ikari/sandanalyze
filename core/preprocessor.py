@@ -71,7 +71,7 @@ class PreprocessConfig:
             "shadow": cls(
                 blur_kernel=5,
                 adaptive_block_size=91,
-                adaptive_c=2,
+                adaptive_c=5,
                 morph_kernel_size=3,
                 min_area=500,
                 use_clahe=True,
@@ -339,8 +339,11 @@ def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.
         # Shadow preset: use smaller block for better separation
         adaptive_block_size = 21
 
+    # Detect bright grains on dark background
+    # Invert image so bright grains become dark (for THRESH_BINARY_INV)
+    inverted = cv2.bitwise_not(blurred)
     thresh = cv2.adaptiveThreshold(
-        blurred,
+        inverted,
         255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY_INV,
