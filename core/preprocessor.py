@@ -175,6 +175,42 @@ def analyze_image_characteristics(image: np.ndarray) -> dict[str, float]:
     }
 
 
+def auto_detect_preset(image: np.ndarray) -> str:
+    """Automatically detect the best preset based on image characteristics.
+
+    Analyzes image brightness, contrast, and noise to determine
+    the optimal preprocessing preset.
+
+    Args:
+        image: Input image (grayscale or color).
+
+    Returns:
+        Preset name: "default", "macro_sand", "microscope", or "shadow".
+    """
+    features = analyze_image_characteristics(image)
+    brightness = features["brightness"]
+    contrast = features["contrast"]
+    noise = features["noise"]
+
+    # Decision tree for preset selection
+    # Priority: shadow > microscope > macro_sand > default
+
+    # Shadow detection: low brightness AND low contrast
+    if brightness < 80 and contrast < 80:
+        return "shadow"
+
+    # Microscope detection: high noise OR very low brightness
+    if noise > 8 or brightness < 40:
+        return "microscope"
+
+    # Macro sand detection: bright + high contrast
+    if brightness > 120 and contrast > 80:
+        return "macro_sand"
+
+    # Default for everything else
+    return "default"
+
+
 def auto_tune_for_microscope(
     image: np.ndarray,
 ) -> tuple[PreprocessConfig, dict[str, int | float]]:

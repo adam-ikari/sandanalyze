@@ -27,6 +27,7 @@ from core.preprocessor import (
     PreprocessConfig,
     auto_tune_params,
     auto_tune_for_microscope,
+    auto_detect_preset,
 )
 from core.report import generate_pdf_report
 from core.exporter import export_csv, export_annotated_image
@@ -322,10 +323,16 @@ with st.sidebar:
                 # Auto-tune if enabled
                 detection_params = {}
                 if st.session_state.use_auto_tune:
+                    # Auto-detect best preset based on image characteristics
+                    detected_preset = auto_detect_preset(image)
+                    config = PreprocessConfig.from_preset(detected_preset)
+
+                    # Further fine-tune based on image analysis
                     config, detection_params = auto_tune_for_microscope(image)
                     st.session_state.config = config
                     st.info(
-                        f"Auto-tuned: blur={config.blur_kernel}, "
+                        f"Auto-detected preset: {detected_preset} | "
+                        f"blur={config.blur_kernel}, "
                         f"block={config.adaptive_block_size}, "
                         f"min_area={detection_params['min_area']}"
                     )
