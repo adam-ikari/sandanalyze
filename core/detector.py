@@ -135,14 +135,10 @@ def detect_grains(
             lx + lw >= w - border_margin or ly + lh >= h - border_margin
         )
 
-        # Reject border-touching components unless they are clearly flocculation
-        # and not just edge artifacts
+        # Reject border-touching components to avoid circular boundary artifacts
+        # This prevents the microscope's circular field of view from being detected as grains
         if touches_border:
-            # Only allow if it's large enough AND has flocculation characteristics
-            if area >= floc_config.min_area and area <= floc_config.max_area:
-                allow_border = True
-            else:
-                allow_border = False
+            allow_border = False
         else:
             allow_border = True
 
