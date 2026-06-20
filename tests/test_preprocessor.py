@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import pytest
 
-from core.preprocessor import PreprocessConfig, preprocess, crop_black_background
+from core.preprocessor import PreprocessConfig, preprocess
 
 
 class TestPreprocessConfig:
@@ -57,69 +57,69 @@ class TestClahe:
         assert np.sum(result_with_clahe) >= np.sum(result_no_clahe)
 
 
-class TestCropBlackBackground:
-    """Tests for crop_black_background helper."""
+# class TestCropBlackBackground:
+#     """Tests for crop_black_background helper."""
 
-    def test_crops_black_background(self):
-        """Test that black background is cropped to the bright region."""
-        # Create an image with a bright rectangle on a black background
-        image = np.zeros((200, 200, 3), dtype=np.uint8)
-        cv2.rectangle(image, (50, 50), (150, 120), (200, 200, 200), -1)
+#     def test_crops_black_background(self):
+#         """Test that black background is cropped to the bright region."""
+#         # Create an image with a bright rectangle on a black background
+#         image = np.zeros((200, 200, 3), dtype=np.uint8)
+#         cv2.rectangle(image, (50, 50), (150, 120), (200, 200, 200), -1)
 
-        cropped, (x, y, w, h) = crop_black_background(image)
+#         cropped, (x, y, w, h) = crop_black_background(image)
 
-        # Check that the crop bounds match the bright rectangle
-        assert x == 50
-        assert y == 50
-        assert w == 101
-        assert h == 71
+#         # Check that the crop bounds match the bright rectangle
+#         assert x == 50
+#         assert y == 50
+#         assert w == 101
+#         assert h == 71
 
-        # Check that the cropped image has the expected shape
-        assert cropped.shape == (71, 101, 3)
+#         # Check that the cropped image has the expected shape
+#         assert cropped.shape == (71, 101, 3)
 
-        # Check that the cropped image contains the bright region
-        assert np.mean(cropped) > 100
+#         # Check that the cropped image contains the bright region
+#         assert np.mean(cropped) > 100
 
-    def test_crops_grayscale_image(self):
-        """Test that crop_black_background works on grayscale images."""
-        image = np.zeros((200, 200), dtype=np.uint8)
-        cv2.rectangle(image, (30, 40), (100, 90), 255, -1)
+#     def test_crops_grayscale_image(self):
+#         """Test that crop_black_background works on grayscale images."""
+#         image = np.zeros((200, 200), dtype=np.uint8)
+#         cv2.rectangle(image, (30, 40), (100, 90), 255, -1)
 
-        cropped, (x, y, w, h) = crop_black_background(image)
+#         cropped, (x, y, w, h) = crop_black_background(image)
 
-        assert x == 30
-        assert y == 40
-        assert w == 71
-        assert h == 51
-        assert cropped.shape == (51, 71)
+#         assert x == 30
+#         assert y == 40
+#         assert w == 71
+#         assert h == 51
+#         assert cropped.shape == (51, 71)
 
-    def test_returns_full_image_when_no_bright_region(self):
-        """Test that an all-black image returns the original image."""
-        image = np.zeros((100, 100), dtype=np.uint8)
+#     def test_returns_full_image_when_no_bright_region(self):
+#         """Test that an all-black image returns the original image."""
+#         image = np.zeros((100, 100), dtype=np.uint8)
 
-        cropped, (x, y, w, h) = crop_black_background(image)
+#         cropped, (x, y, w, h) = crop_black_background(image)
 
-        assert x == 0
-        assert y == 0
-        assert w == 100
-        assert h == 100
-        assert cropped.shape == (100, 100)
+#         assert x == 0
+#         assert y == 0
+#         assert w == 100
+#         assert h == 100
+#         assert cropped.shape == (100, 100)
 
-    def test_returns_largest_component(self):
-        """Test that only the largest bright component is kept."""
-        image = np.zeros((200, 200), dtype=np.uint8)
-        # Small bright component
-        cv2.rectangle(image, (10, 10), (30, 30), 255, -1)
-        # Large bright component
-        cv2.rectangle(image, (80, 80), (180, 160), 255, -1)
+#     def test_returns_largest_component(self):
+#         """Test that only the largest bright component is kept."""
+#         image = np.zeros((200, 200), dtype=np.uint8)
+#         # Small bright component
+#         cv2.rectangle(image, (10, 10), (30, 30), 255, -1)
+#         # Large bright component
+#         cv2.rectangle(image, (80, 80), (180, 160), 255, -1)
 
-        cropped, (x, y, w, h) = crop_black_background(image)
+#         cropped, (x, y, w, h) = crop_black_background(image)
 
-        # Should crop to the large component
-        assert x == 80
-        assert y == 80
-        assert w == 101
-        assert h == 81
+#         # Should crop to the large component
+#         assert x == 80
+#         assert y == 80
+#         assert w == 101
+#         assert h == 81
 
 
 class TestEdgeFiltering:

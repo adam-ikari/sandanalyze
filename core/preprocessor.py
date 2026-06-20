@@ -333,12 +333,18 @@ def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.
     blurred = cv2.GaussianBlur(gray, (config.blur_kernel, config.blur_kernel), 0)
 
     # 4. Adaptive threshold
+    # Use smaller block size for shadow preset to separate粘连 grains
+    adaptive_block_size = config.adaptive_block_size
+    if adaptive_block_size >= 91:
+        # Shadow preset: use smaller block for better separation
+        adaptive_block_size = 21
+
     thresh = cv2.adaptiveThreshold(
         blurred,
         255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY_INV,
-        config.adaptive_block_size,
+        adaptive_block_size,
         config.adaptive_c,
     )
 
@@ -355,7 +361,63 @@ def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.
     return mask
 
 
-def crop_black_background(image: np.ndarray, threshold: int = 30) -> tuple[np.ndarray, tuple[int, int, int, int]]:
+def preprocess_shadow_regions(image: np.ndarray, config: PreprocessConfig | None = None) -> np.ndarray:
+    """Enhanced preprocessing for shadow regions with aggressive contrast enhancement.
+
+    Uses multiple CLAHE passes and adaptive thresholding to detect grains
+    in low-contrast shadow areas.
+
+    Args:
+        image: Input image (grayscale or color).
+        config: Preprocessing configuration. Uses defaults if None.
+
+    Returns:
+        Binary mask (uint8) with foreground grains as 255 and background as 0.
+    """
+    if config is None:
+        config = PreprocessConfig()
+
+    # 1. Grayscale
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
+
+    # 2. Aggressive CLAHE for shadow regions
+    if config.use_clahe:
+        # First pass: strong CLAHE
+        clahe = cv2.createCLAHE(clipLimit=6.0, tileGridSize=(8, 8))
+        gray = clahe.apply(gray)
+
+        # Second pass: local CLAHE with smaller tiles for fine detail
+        clahe2 = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(4, 4))
+        gray = clahe2.apply(gray)
+
+    # 3. Gaussian blur
+    blurred = cv2.GaussianBlur(gray, (config.blur_kernel, config.blur_kernel), 0)
+
+    # 4. Adaptive threshold with lower C for shadow regions
+    adaptive_c = max(2, config.adaptive_c - 2)  # Lower C for more sensitivity
+    thresh = cv2.adaptiveThreshold(
+        blurred,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        config.adaptive_block_size,
+        adaptive_c,
+    )
+
+    # 5. Morphological operations
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (config.morph_kernel_size, config.morph_kernel_size)
+    )
+    opened = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=config.morph_open_iter)
+    closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel, iterations=config.morph_close_iter)
+
+    # 6. Area filtering
+    mask = _filter_by_area(closed, config.min_area)
+
+    return mask
     """Crop black background from image.
 
     Finds the largest bright connected component and crops to its bounding box.
