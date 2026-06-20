@@ -339,11 +339,11 @@ def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.
         # Shadow preset: use smaller block for better separation
         adaptive_block_size = 21
 
-    # Detect bright grains on dark background
-    # Invert image so bright grains become dark (for THRESH_BINARY_INV)
-    inverted = cv2.bitwise_not(blurred)
+    # Detect dark grains on light background (sample 25)
+    # For dark grains: use THRESH_BINARY_INV directly on original image
+    # This detects pixels darker than the local mean as foreground
     thresh = cv2.adaptiveThreshold(
-        inverted,
+        blurred,
         255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY_INV,
