@@ -358,8 +358,38 @@ def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.
     opened = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=config.morph_open_iter)
     closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel, iterations=config.morph_close_iter)
 
-    # 6. Area filtering
-    mask = _filter_by_area(closed, config.min_area)
+    # 6. Watershed splitting to separate touching grains
+    # Use distance transform to find markers
+    dist_transform = cv2.distanceTransform(closed, cv2.DIST_L2, 5)
+
+    # Normalize distance transform
+    dist_transform = cv2.normalize(dist_transform, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+
+    # Threshold to find sure foreground
+    _, sure_fg = cv2.threshold(dist_transform, 0.5 * dist_transform.max(), 255, cv2.THRESH_BINARY)
+    sure_fg = np.uint8(sure_fg)
+
+    # Find unknown region
+    sure_bg = cv2.dilate(closed, kernel, iterations=3)
+    unknown = cv2.subtract(sure_bg, sure_fg)
+
+    # Marker labelling
+    num_labels, markers = cv2.connectedComponents(sure_fg)
+    markers = markers + 1
+    markers[unknown == 255] = 0
+
+    # Apply watershed
+    # Convert to color for watershed
+    color_img = cv2.cvtColor(closed, cv2.COLOR_GRAY2BGR)
+    markers = cv2.watershed(color_img, markers)
+
+    # Create mask from watershed result
+    # Markers == -1 are boundaries, markers > 1 are different grains
+    watershed_mask = np.zeros_like(closed)
+    watershed_mask[markers > 1] = 255
+
+    # 7. Area filtering
+    mask = _filter_by_area(watershed_mask, config.min_area)
 
     return mask
 

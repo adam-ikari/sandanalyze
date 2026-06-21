@@ -80,6 +80,13 @@ def run_detection_pipeline(
     grains: list[GrainContour] = []
     morphologies: list[GrainMorphology] = []
 
+    # Apply CNN enhancement if available
+    try:
+        from core.cnn_enhancer import filter_grains_with_cnn
+        results = filter_grains_with_cnn(results, image)
+    except ImportError:
+        pass  # CNN enhancement not available
+
     for result in results:
         grain = GrainContour(contour=result.contour, mask=result.mask)
         grains.append(grain)
