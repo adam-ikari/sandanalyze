@@ -44,6 +44,8 @@ def run_detection_pipeline(
     hull_expansion_ratio: float = 1.5,
     floc_config: FlocculationConfig | None = None,
     crop_black_background: bool = True,
+    use_texture_validation: bool = True,
+    texture_score_threshold: float = 0.4,
 ) -> tuple[list[GrainContour], list[GrainMorphology], GrainStatistics]:
     """Run the full detection pipeline on a raw image.
 
@@ -63,6 +65,8 @@ def run_detection_pipeline(
         hull_expansion_ratio: Threshold for using convex hull vs mask filling.
         floc_config: Flocculation detection config. Uses defaults if None.
         crop_black_background: Whether to crop black background before processing.
+        use_texture_validation: Whether to apply texture/edge validation.
+        texture_score_threshold: Threshold for texture/edge validation score.
 
     Returns:
         Tuple of (grains, morphologies, statistics).
@@ -79,15 +83,17 @@ def run_detection_pipeline(
     )
 
     # Texture/edge validation
-    validator = TextureEdgeValidator(ValidationConfig())
-    filtered_results = []
-    for result in results:
-        candidate = _detection_result_to_candidate(result, image)
-        if validator.validate(candidate, image):
-            filtered_results.append(result)
-    # Fallback: if validation filters out everything, keep original results
-    if filtered_results:
-        results = filtered_results
+    if use_texture_validation:
+        validation_config = ValidationConfig(texture_score_threshold=texture_score_threshold)
+        validator = TextureEdgeValidator(validation_config)
+        filtered_results = []
+        for result in results:
+            candidate = _detection_result_to_candidate(result, image)
+            if validator.validate(candidate, image):
+                filtered_results.append(result)
+        # Fallback: if validation filters out everything, keep original results
+        if filtered_results:
+            results = filtered_results
 
     grains: list[GrainContour] = []
     morphologies: list[GrainMorphology] = []

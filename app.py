@@ -66,8 +66,13 @@ DEFAULTS = {
     "hull_expansion_ratio": 1.5,
     "border_margin": 5,
     "use_flocculation": True,
-    "floc_config": FlocculationConfig(),
+    "floc_config": FlocculationConfig(min_area=3000),
     "use_auto_tune": True,
+    "use_cnn_enhancement": True,
+    "cnn_model": None,
+    "cnn_threshold": 0.5,
+    "use_texture_validation": True,
+    "texture_score_threshold": 0.4,
 }
 
 for key, default in DEFAULTS.items():
@@ -305,10 +310,34 @@ with st.sidebar:
             "Flocculation Detection", value=st.session_state.use_flocculation,
             help="Detect and classify grain clusters"
         )
+        use_cnn = st.checkbox(
+            "CNN Enhancement", value=st.session_state.use_cnn_enhancement,
+            help="Use CNN model to filter false positives (requires cnn_model_v2.h5)"
+        )
+        use_texture = st.checkbox(
+            "Texture/Edge Validation", value=st.session_state.use_texture_validation,
+            help="Use texture and edge features to filter false positives"
+        )
+        if use_cnn:
+            cnn_threshold = st.slider(
+                "CNN Threshold", min_value=0.0, max_value=1.0,
+                value=st.session_state.cnn_threshold, step=0.05,
+                help="Classification threshold for CNN filtering"
+            )
+            st.session_state.cnn_threshold = cnn_threshold
+        if use_texture:
+            texture_threshold = st.slider(
+                "Texture Score Threshold", min_value=0.0, max_value=1.0,
+                value=st.session_state.texture_score_threshold, step=0.05,
+                help="Lower = more grains detected, higher = stricter filtering"
+            )
+            st.session_state.texture_score_threshold = texture_threshold
 
         st.session_state.border_margin = border_margin
         st.session_state.hull_expansion_ratio = hull_expansion_ratio
         st.session_state.use_flocculation = use_flocculation
+        st.session_state.use_cnn_enhancement = use_cnn
+        st.session_state.use_texture_validation = use_texture
 
     # ── Run button ─────────────────────────────────────────────────────────
     if st.button("🔍 Run Detection", type="primary", width="stretch"):
@@ -347,9 +376,44 @@ with st.sidebar:
                     hull_expansion_ratio=st.session_state.hull_expansion_ratio,
                     floc_config=st.session_state.floc_config if st.session_state.use_flocculation else None,
                     crop_black_background=True,
+                    use_texture_validation=st.session_state.use_texture_validation,
+                    texture_score_threshold=st.session_state.texture_score_threshold,
                 )
 
-                st.session_state.detection_method = "traditional"
+                # Apply CNN enhancement if enabled
+                if st.session_state.use_cnn_enhancement and grains:
+                    try:
+                        from core.cnn_enhancer import filter_grains_with_cnn, create_cnn_model
+                        import os
+
+                        # Use absolute path to model file
+                        script_dir = os.path.dirname(os.path.abspath(__file__))
+                        model_path = os.path.join(script_dir, 'cnn_model_v2.h5')
+
+                        cnn_model = create_cnn_model()
+                        if cnn_model is not None and os.path.exists(model_path):
+                            cnn_model.load_weights(model_path)
+                            # Filter grains using CNN
+                            filtered_grains = filter_grains_with_cnn(
+                                [g.contour for g in grains], image, model=cnn_model,
+                                threshold=st.session_state.cnn_threshold
+                            )
+                            # Filter morphologies to match filtered grains
+                            filtered_indices = []
+                            for fg in filtered_grains:
+                                for i, g in enumerate(grains):
+                                    if np.array_equal(g.contour, fg):
+                                        filtered_indices.append(i)
+                                        break
+                            grains = [grains[i] for i in filtered_indices]
+                            morphologies = [morphologies[i] for i in filtered_indices]
+                            st.info(f"CNN filtered: {len(filtered_grains)} grains kept")
+                        else:
+                            st.warning("CNN model not available. Run training first.")
+                    except Exception as exc:
+                        st.warning(f"CNN enhancement failed: {exc}")
+
+                st.session_state.detection_method = "traditional" + (" + CNN" if st.session_state.use_cnn_enhancement else "") + (" + Texture" if st.session_state.use_texture_validation else "")
                 st.session_state.grains = grains
                 st.session_state.morphologies = morphologies
                 st.session_state.statistics = statistics
