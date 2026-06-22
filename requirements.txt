@@ -7,3 +7,5 @@ numpy>=1.26
 scipy>=1.12
 anthropic>=0.109.2
 reportlab>=4.0
+# Optional: for advanced texture features (LBP/GLCM)
+# scikit-image>=0.22
