@@ -98,28 +98,6 @@ def run_detection_pipeline(
     grains: list[GrainContour] = []
     morphologies: list[GrainMorphology] = []
 
-    # Apply CNN enhancement if available
-    try:
-        from core.cnn_enhancer import filter_grains_with_cnn, create_cnn_model
-        import os
-        # Load improved CNN model
-        cnn_model = create_cnn_model()
-        if cnn_model is not None:
-            model_path = 'cnn_model_v2.h5'
-            if os.path.exists(model_path):
-                cnn_model.load_weights(model_path)
-                # Extract contours from results
-                contours = [result.contour for result in results]
-                filtered_contours = filter_grains_with_cnn(contours, image, model=cnn_model, threshold=0.5)
-                # Filter results based on filtered contours
-                results = [result for result in results if any(np.array_equal(result.contour, fc) for fc in filtered_contours)]
-            else:
-                print(f"Warning: CNN model file not found: {model_path}")
-    except Exception as e:
-        import traceback
-        print(f"Warning: CNN enhancement failed: {e}")
-        traceback.print_exc()
-
     for result in results:
         grain = GrainContour(contour=result.contour, mask=result.mask)
         grains.append(grain)
