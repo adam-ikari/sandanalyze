@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 
 from core.classifier import classify_grain
-from core.detector import detect_grains, FlocculationConfig
+from core.detector import detect_grains, DetectionResult, FlocculationConfig
 from core.feature_filter import (
     filter_edge_false_positives,
     filter_filaments,
@@ -32,6 +32,7 @@ from core.multiscale_detector import (
     preprocess_all_scales,
 )
 from core.preprocessor import PreprocessConfig
+from core.texture_edge_filter import TextureEdgeValidator, ValidationConfig
 
 
 def run_detection_pipeline(
@@ -77,15 +78,41 @@ def run_detection_pipeline(
         crop_black_background=crop_black_background,
     )
 
+    # Texture/edge validation
+    validator = TextureEdgeValidator(ValidationConfig())
+    filtered_results = []
+    for result in results:
+        candidate = _detection_result_to_candidate(result, image)
+        if validator.validate(candidate, image):
+            filtered_results.append(result)
+    # Fallback: if validation filters out everything, keep original results
+    if filtered_results:
+        results = filtered_results
+
     grains: list[GrainContour] = []
     morphologies: list[GrainMorphology] = []
 
     # Apply CNN enhancement if available
     try:
-        from core.cnn_enhancer import filter_grains_with_cnn
-        results = filter_grains_with_cnn(results, image)
-    except ImportError:
-        pass  # CNN enhancement not available
+        from core.cnn_enhancer import filter_grains_with_cnn, create_cnn_model
+        import os
+        # Load improved CNN model
+        cnn_model = create_cnn_model()
+        if cnn_model is not None:
+            model_path = 'cnn_model_v2.h5'
+            if os.path.exists(model_path):
+                cnn_model.load_weights(model_path)
+                # Extract contours from results
+                contours = [result.contour for result in results]
+                filtered_contours = filter_grains_with_cnn(contours, image, model=cnn_model, threshold=0.5)
+                # Filter results based on filtered contours
+                results = [result for result in results if any(np.array_equal(result.contour, fc) for fc in filtered_contours)]
+            else:
+                print(f"Warning: CNN model file not found: {model_path}")
+    except Exception as e:
+        import traceback
+        print(f"Warning: CNN enhancement failed: {e}")
+        traceback.print_exc()
 
     for result in results:
         grain = GrainContour(contour=result.contour, mask=result.mask)
@@ -295,3 +322,33 @@ def _mask_to_candidates(
         candidates.append(candidate)
 
     return candidates
+
+def _detection_result_to_candidate(
+    result: DetectionResult, image: np.ndarray
+) -> GrainCandidate:
+    """Convert DetectionResult to GrainCandidate for texture/edge validation."""
+    from core.multiscale_detector import GrainCandidate
+
+    x, y, w, h = cv2.boundingRect(result.contour)
+    h_img, w_img = image.shape[:2]
+
+    border_distance = min(x, y, w_img - (x + w), h_img - (y + h))
+
+    hull = cv2.convexHull(result.contour)
+    hull_area = cv2.contourArea(hull)
+    solidity = result.area / hull_area if hull_area > 0 else 0.0
+
+    return GrainCandidate(
+        contour=result.contour,
+        mask=result.mask,
+        area=result.area,
+        perimeter=result.perimeter,
+        circularity=result.circularity,
+        aspect_ratio=result.aspect_ratio,
+        major_axis=result.major_axis,
+        minor_axis=result.minor_axis,
+        convexity=result.convexity,
+        is_flocculation=result.is_flocculation,
+        border_distance=float(border_distance),
+        solidity=solidity,
+    )
