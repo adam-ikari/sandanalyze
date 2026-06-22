@@ -36,9 +36,9 @@ class ValidationConfig:
         noise_max_area: Maximum area (pixels) for noise classification.
     """
 
-    texture_score_threshold: float = 0.4
+    texture_score_threshold: float = 0.3
     edge_direction_threshold: float = 0.6
-    edge_closure_threshold: float = 0.3
+    edge_closure_threshold: float = 0.1
     lens_edge_margin: float = 0.05
     lens_edge_circularity: float = 0.7
     lens_edge_min_area: float = 50000
@@ -101,11 +101,17 @@ class TextureEdgeValidator:
         if composite < self.config.texture_score_threshold:
             return False
 
-        roi_gray = self._extract_roi(candidate, full_image)
+        roi_gray, roi_offset = self._extract_roi_with_offset(candidate, full_image)
         if roi_gray is None:
             return False
 
-        closure = compute_edge_closure(candidate.contour, roi_gray)
+        # Shift contour to ROI-local coordinates for edge closure
+        contour_local = candidate.contour.copy()
+        if contour_local.ndim == 3:
+            contour_local = contour_local.reshape(-1, 2)
+        contour_local = contour_local - np.array(roi_offset)
+
+        closure = compute_edge_closure(contour_local, roi_gray)
         if closure < self.config.edge_closure_threshold:
             return False
 
@@ -215,6 +221,21 @@ class TextureEdgeValidator:
         Returns:
             Grayscale ROI or None if extraction fails.
         """
+        result = self._extract_roi_with_offset(candidate, full_image)
+        return result[0] if result is not None else None
+
+    def _extract_roi_with_offset(
+        self, candidate: object, full_image: np.ndarray
+    ) -> tuple[np.ndarray, tuple[int, int]] | None:
+        """Extract a grayscale ROI and its top-left offset in the full image.
+
+        Args:
+            candidate: GrainCandidate instance (must have contour attribute).
+            full_image: Original input image.
+
+        Returns:
+            Tuple of (grayscale ROI, (x1, y1) offset) or None if extraction fails.
+        """
         contour = getattr(candidate, "contour", None)
         if contour is None or len(contour) == 0:
             return None
@@ -239,7 +260,7 @@ class TextureEdgeValidator:
         roi = gray[y1:y2, x1:x2]
         if roi.size == 0:
             return None
-        return roi
+        return roi, (x1, y1)
 
 
 # ---------------------------------------------------------------------------
@@ -439,9 +460,11 @@ def compute_edge_closure(contour: np.ndarray, roi_gray: np.ndarray) -> float:
     """Compute ratio of contour pixels that overlap Canny edges.
 
     Measures how well the contour is supported by actual image edges.
+    The contour is expected to be in ROI-local coordinates (i.e. already
+    shifted so the top-left of the ROI is (0, 0)).
 
     Args:
-        contour: Nx2 contour array (or Nx1x2 from OpenCV).
+        contour: Nx2 contour array (or Nx1x2 from OpenCV) in ROI-local coords.
         roi_gray: Grayscale ROI image.
 
     Returns:
