@@ -69,7 +69,7 @@ DEFAULTS = {
     "floc_config": FlocculationConfig(min_area=3000),
     "use_auto_tune": True,
     "use_texture_validation": True,
-    "texture_score_threshold": 0.4,
+    "texture_score_threshold": 0.15,
 }
 
 for key, default in DEFAULTS.items():
