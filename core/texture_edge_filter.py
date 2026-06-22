@@ -36,9 +36,9 @@ class ValidationConfig:
         noise_max_area: Maximum area (pixels) for noise classification.
     """
 
-    texture_score_threshold: float = 0.3
+    texture_score_threshold: float = 0.15
     edge_direction_threshold: float = 0.6
-    edge_closure_threshold: float = 0.1
+    edge_closure_threshold: float = 0.05
     lens_edge_margin: float = 0.05
     lens_edge_circularity: float = 0.7
     lens_edge_min_area: float = 50000
@@ -507,8 +507,12 @@ def compute_edge_closure(contour: np.ndarray, roi_gray: np.ndarray) -> float:
     else:
         pts = contour
 
-    # Build edge map
-    edges = cv2.Canny(roi_gray, 50, 150)
+    # Build edge map with adaptive thresholds based on ROI median
+    # Fixed thresholds (50, 150) fail on low-contrast regions; adapt to ROI median
+    median_val = float(np.median(roi_gray))
+    t1 = max(5, int(median_val * 0.1))
+    t2 = max(15, int(median_val * 0.3))
+    edges = cv2.Canny(roi_gray, t1, t2)
     if cv2.countNonZero(edges) == 0:
         return 0.0
 

@@ -27,9 +27,9 @@ class TestTextureEdgeValidator:
     def test_validator_initialization(self):
         """Default config values should be set correctly."""
         validator = TextureEdgeValidator()
-        assert validator.config.texture_score_threshold == 0.3
+        assert validator.config.texture_score_threshold == 0.15
         assert validator.config.edge_direction_threshold == 0.6
-        assert validator.config.edge_closure_threshold == 0.1
+        assert validator.config.edge_closure_threshold == 0.05
         assert validator.config.lens_edge_margin == 0.05
         assert validator.config.lens_edge_circularity == 0.7
         assert validator.config.lens_edge_min_area == 50000
