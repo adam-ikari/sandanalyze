@@ -32,7 +32,7 @@ from core.multiscale_detector import (
     preprocess_all_scales,
 )
 from core.preprocessor import PreprocessConfig
-from core.texture_edge_filter import TextureEdgeValidator, ValidationConfig
+from core.texture_edge_filter import SimpleValidator, ValidationConfig
 
 
 def run_detection_pipeline(
@@ -84,8 +84,8 @@ def run_detection_pipeline(
 
     # Texture/edge validation
     if use_texture_validation:
-        validation_config = ValidationConfig(texture_score_threshold=texture_score_threshold)
-        validator = TextureEdgeValidator(validation_config)
+        from core.texture_edge_filter import SimpleValidator, ValidationConfig
+        validator = SimpleValidator(ValidationConfig())
         filtered_results = []
         for result in results:
             candidate = _detection_result_to_candidate(result, image)
