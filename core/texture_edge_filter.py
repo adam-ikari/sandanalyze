@@ -80,8 +80,8 @@ class TextureEdgeValidator:
         Steps:
         1. Reject lens-edge artifacts (large circular objects near border).
         2. Reject noise (small, low-texture, weak-edge regions).
-        3. Compute composite texture+edge score and compare to threshold.
-        4. Check edge closure against threshold.
+        3. For larger grains, use relaxed validation (skip strict texture checks).
+        4. For smaller grains, check texture score and edge closure.
 
         Args:
             candidate: GrainCandidate instance (must have area, circularity,
@@ -91,19 +91,47 @@ class TextureEdgeValidator:
         Returns:
             True if candidate passes all validation checks.
         """
+        # Step 1: Always reject lens-edge artifacts
         if self._is_lens_edge(candidate, full_image):
             return False
 
+        # Step 2: Always reject noise
         if self._is_noise(candidate, full_image):
             return False
 
+        area = getattr(candidate, "area", 0)
+
+        # Step 3: Large grains (>3000 px) get relaxed validation
+        # They are unlikely to be noise or artifacts, so we skip strict texture checks
+        if area > 3000:
+            # Only check edge closure as a sanity check (very relaxed)
+            roi_info = self._extract_roi_with_offset(candidate, full_image)
+            if roi_info is None:
+                return True  # Can't extract ROI, assume valid
+            roi_gray, roi_offset = roi_info
+
+            # Shift contour to ROI-local coordinates
+            contour_local = candidate.contour.copy()
+            if contour_local.ndim == 3:
+                contour_local = contour_local.reshape(-1, 2)
+            contour_local = contour_local - np.array(roi_offset)
+
+            closure = compute_edge_closure(contour_local, roi_gray)
+            # Very relaxed: only reject if closure is extremely low (<0.01)
+            # This catches only completely fragmented detections
+            if closure < 0.01:
+                return False
+            return True
+
+        # Step 4: Smaller grains get stricter validation
         composite = self._compute_composite_score(candidate, full_image)
         if composite < self.config.texture_score_threshold:
             return False
 
-        roi_gray, roi_offset = self._extract_roi_with_offset(candidate, full_image)
-        if roi_gray is None:
+        roi_info = self._extract_roi_with_offset(candidate, full_image)
+        if roi_info is None:
             return False
+        roi_gray, roi_offset = roi_info
 
         # Shift contour to ROI-local coordinates for edge closure
         contour_local = candidate.contour.copy()
