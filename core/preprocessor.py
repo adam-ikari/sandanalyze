@@ -342,7 +342,8 @@ def _preprocess_brightness(image: np.ndarray, config: PreprocessConfig) -> np.nd
     blurred = cv2.GaussianBlur(gray, (config.blur_kernel, config.blur_kernel), 0)
 
     # 4. Adaptive threshold
-    # Use smaller block size for shadow preset to separate粘连 grains
+    # Use smaller block size for shadow preset to separate adhering grains.
+    # The value 91 is the shadow preset's adaptive block size.
     adaptive_block_size = config.adaptive_block_size
     if adaptive_block_size >= 91:
         # Shadow preset: use smaller block for better separation
@@ -408,7 +409,8 @@ def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.
     blurred = cv2.GaussianBlur(gray, (config.blur_kernel, config.blur_kernel), 0)
 
     # 4. Adaptive threshold
-    # Use smaller block size for shadow preset to separate粘连 grains
+    # Use smaller block size for shadow preset to separate adhering grains
+    # (91 is the shadow preset's adaptive block size threshold)
     adaptive_block_size = config.adaptive_block_size
     if adaptive_block_size >= 91:
         # Shadow preset: use smaller block for better separation
