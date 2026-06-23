@@ -259,6 +259,7 @@ with st.sidebar:
     with st.expander("⚙️ Preprocessing Parameters", expanded=False):
         config = st.session_state.config
 
+        st.markdown("**Brightness Branch**")
         col_a, col_b = st.columns(2)
         with col_a:
             blur_kernel = st.number_input(
@@ -286,6 +287,46 @@ with st.sidebar:
         use_clahe = st.checkbox("CLAHE Enhancement", value=config.use_clahe)
         use_auto_tune = st.checkbox("Auto-Tune Parameters", value=st.session_state.use_auto_tune)
 
+        st.markdown("---")
+        st.markdown("**Edge Branch**")
+        col_e1, col_e2 = st.columns(2)
+        with col_e1:
+            edge_clip_limit = st.number_input(
+                "Edge CLAHE Clip Limit", min_value=1.0, max_value=10.0,
+                value=config.edge_clip_limit, step=0.5,
+            )
+            edge_blur_kernel = st.number_input(
+                "Edge Blur Kernel", min_value=1, max_value=31,
+                value=config.edge_blur_kernel, step=2,
+            )
+        with col_e2:
+            edge_adaptive_block = st.number_input(
+                "Edge Adaptive Block", min_value=3, max_value=99,
+                value=config.edge_adaptive_block_size, step=2,
+            )
+            edge_adaptive_c = st.number_input(
+                "Edge Adaptive C", min_value=-10, max_value=20,
+                value=config.edge_adaptive_c, step=1,
+            )
+
+        st.markdown("---")
+        st.markdown("**Texture Branch**")
+        col_t1, col_t2 = st.columns(2)
+        with col_t1:
+            texture_window = st.number_input(
+                "Texture Window", min_value=3, max_value=51,
+                value=config.texture_window, step=2,
+            )
+            texture_std_threshold = st.number_input(
+                "Texture Std Threshold", min_value=1.0, max_value=50.0,
+                value=config.texture_std_threshold, step=1.0,
+            )
+        with col_t2:
+            texture_diff_threshold = st.number_input(
+                "Texture Diff Threshold", min_value=1.0, max_value=50.0,
+                value=config.texture_diff_threshold, step=1.0,
+            )
+
         st.session_state.config = PreprocessConfig(
             blur_kernel=blur_kernel,
             adaptive_block_size=adaptive_block,
@@ -293,6 +334,13 @@ with st.sidebar:
             morph_kernel_size=morph_kernel,
             min_area=min_area,
             use_clahe=use_clahe,
+            edge_clip_limit=edge_clip_limit,
+            edge_blur_kernel=edge_blur_kernel,
+            edge_adaptive_block_size=edge_adaptive_block,
+            edge_adaptive_c=edge_adaptive_c,
+            texture_window=texture_window,
+            texture_std_threshold=texture_std_threshold,
+            texture_diff_threshold=texture_diff_threshold,
         )
         st.session_state.use_auto_tune = use_auto_tune
 
