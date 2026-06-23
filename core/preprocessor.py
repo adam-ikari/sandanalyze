@@ -313,6 +313,63 @@ def auto_tune_for_microscope(
     )
 
 
+def _preprocess_brightness(image: np.ndarray, config: PreprocessConfig) -> np.ndarray:
+    """Brightness branch: high-contrast grain detection.
+
+    Detects grains with clear brightness contrast against background.
+
+    Args:
+        image: Input image (grayscale or color).
+        config: Preprocessing configuration.
+
+    Returns:
+        Binary mask (uint8) with foreground grains as 255.
+    """
+    # 1. Grayscale
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
+
+    # 2. Optional CLAHE
+    if config.use_clahe:
+        # Use stronger CLAHE for shadow regions
+        clip_limit = 4.0 if config.adaptive_block_size >= 91 else 2.0
+        clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
+        gray = clahe.apply(gray)
+
+    # 3. Gaussian blur
+    blurred = cv2.GaussianBlur(gray, (config.blur_kernel, config.blur_kernel), 0)
+
+    # 4. Adaptive threshold
+    # Use smaller block size for shadow preset to separate粘连 grains
+    adaptive_block_size = config.adaptive_block_size
+    if adaptive_block_size >= 91:
+        # Shadow preset: use smaller block for better separation
+        adaptive_block_size = 21
+
+    # Detect dark grains on light background (sample 25)
+    # For dark grains: use THRESH_BINARY_INV directly on original image
+    # This detects pixels darker than the local mean as foreground
+    thresh = cv2.adaptiveThreshold(
+        blurred,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        adaptive_block_size,
+        config.adaptive_c,
+    )
+
+    # 5. Morphological operations
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (config.morph_kernel_size, config.morph_kernel_size)
+    )
+    opened = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=config.morph_open_iter)
+    closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel, iterations=config.morph_close_iter)
+
+    return closed
+
+
 def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.ndarray:
     """Run the full preprocessing pipeline on a sand image.
 
