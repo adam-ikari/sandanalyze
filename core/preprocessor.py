@@ -23,6 +23,13 @@ class PreprocessConfig:
         morph_close_iter: Number of morphological close iterations.
         min_area: Minimum contour area to keep in the final mask.
         use_clahe: Whether to apply CLAHE contrast enhancement.
+        edge_clip_limit: CLAHE clip limit for the edge branch.
+        edge_blur_kernel: Gaussian blur kernel size for the edge branch.
+        edge_adaptive_block_size: Adaptive threshold block size for the edge branch.
+        edge_adaptive_c: Constant subtracted from mean in edge branch adaptive threshold.
+        texture_window: Local window size for texture analysis.
+        texture_std_threshold: Standard deviation threshold for texture branch.
+        texture_diff_threshold: Difference threshold for texture branch.
     """
 
     blur_kernel: int = 5
@@ -33,6 +40,17 @@ class PreprocessConfig:
     morph_close_iter: int = 1
     min_area: int = 800
     use_clahe: bool = True
+
+    # Edge branch parameters
+    edge_clip_limit: float = 4.0
+    edge_blur_kernel: int = 3
+    edge_adaptive_block_size: int = 21
+    edge_adaptive_c: int = 2
+
+    # Texture branch parameters
+    texture_window: int = 11
+    texture_std_threshold: float = 10.0
+    texture_diff_threshold: float = 15.0
 
     @classmethod
     def from_preset(cls, preset_name: str) -> "PreprocessConfig":
