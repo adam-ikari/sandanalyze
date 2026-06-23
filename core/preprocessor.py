@@ -500,12 +500,13 @@ def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.
     """Run the full preprocessing pipeline on a sand image.
 
     Pipeline:
-        1. Convert to grayscale if needed.
-        2. Optional CLAHE contrast enhancement.
-        3. Gaussian blur.
-        4. Adaptive thresholding.
+        1. Brightness branch: detect high-contrast grains.
+        2. Edge branch: detect blurry-boundary grains.
+        3. Texture branch: detect uniform dark grains.
+        4. Fuse masks (union).
         5. Morphological open/close.
-        6. Area filtering.
+        6. Watershed splitting.
+        7. Area filtering.
 
     Args:
         image: Input image (grayscale or color).
@@ -517,54 +518,23 @@ def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.
     if config is None:
         config = PreprocessConfig()
 
-    # 1. Grayscale
-    if len(image.shape) == 3:
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    else:
-        gray = image.copy()
+    # Run three branches
+    brightness_mask = _preprocess_brightness(image, config)
+    edge_mask = _preprocess_edge(image, config)
+    texture_mask = _preprocess_texture(image, config)
 
-    # 2. Optional CLAHE
-    if config.use_clahe:
-        # Use stronger CLAHE for shadow regions
-        clip_limit = 4.0 if config.adaptive_block_size >= 91 else 2.0
-        clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
-        gray = clahe.apply(gray)
+    # Fuse masks (union)
+    fused = _fuse_masks([brightness_mask, edge_mask, texture_mask])
 
-    # 3. Gaussian blur
-    blurred = cv2.GaussianBlur(gray, (config.blur_kernel, config.blur_kernel), 0)
-
-    # 4. Adaptive threshold
-    # Use smaller block size for shadow preset to separate adhering grains
-    # (91 is the shadow preset's adaptive block size threshold)
-    adaptive_block_size = config.adaptive_block_size
-    if adaptive_block_size >= 91:
-        # Shadow preset: use smaller block for better separation
-        adaptive_block_size = 21
-
-    # Detect dark grains on light background (sample 25)
-    # For dark grains: use THRESH_BINARY_INV directly on original image
-    # This detects pixels darker than the local mean as foreground
-    thresh = cv2.adaptiveThreshold(
-        blurred,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV,
-        adaptive_block_size,
-        config.adaptive_c,
-    )
-
-    # 5. Morphological operations
+    # Morphological cleanup
     kernel = cv2.getStructuringElement(
         cv2.MORPH_ELLIPSE, (config.morph_kernel_size, config.morph_kernel_size)
     )
-    opened = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=config.morph_open_iter)
+    opened = cv2.morphologyEx(fused, cv2.MORPH_OPEN, kernel, iterations=config.morph_open_iter)
     closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel, iterations=config.morph_close_iter)
 
-    # 6. Watershed splitting to separate touching grains
-    # Use distance transform to find markers
+    # Watershed splitting to separate touching grains
     dist_transform = cv2.distanceTransform(closed, cv2.DIST_L2, 5)
-
-    # Normalize distance transform
     dist_transform = cv2.normalize(dist_transform, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
 
     # Threshold to find sure foreground
@@ -581,16 +551,14 @@ def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.
     markers[unknown == 255] = 0
 
     # Apply watershed
-    # Convert to color for watershed
     color_img = cv2.cvtColor(closed, cv2.COLOR_GRAY2BGR)
     markers = cv2.watershed(color_img, markers)
 
     # Create mask from watershed result
-    # Markers == -1 are boundaries, markers > 1 are different grains
     watershed_mask = np.zeros_like(closed)
     watershed_mask[markers > 1] = 255
 
-    # 7. Area filtering
+    # Area filtering
     mask = _filter_by_area(watershed_mask, config.min_area)
 
     return mask

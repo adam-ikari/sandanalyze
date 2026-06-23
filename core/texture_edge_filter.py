@@ -25,14 +25,12 @@ class ValidationConfig:
         lens_edge_circularity: Minimum circularity to be considered a lens edge.
         lens_edge_min_area: Minimum area (pixels) for a lens edge candidate.
         noise_max_area: Maximum area (pixels) for noise classification.
-        min_contrast: Minimum ROI std to be considered a real grain.
     """
 
     lens_edge_margin: float = 0.05
     lens_edge_circularity: float = 0.7
     lens_edge_min_area: float = 50000
     noise_max_area: int = 500
-    min_contrast: float = 5.0
 
 
 class SimpleValidator:
@@ -71,9 +69,7 @@ class SimpleValidator:
         if self._is_noise(candidate, full_image):
             return False
 
-        # 3. Reject extremely low contrast (background blobs)
-        if self._is_low_contrast(candidate, full_image):
-            return False
+        # Removed: low contrast check — solid black grains are valid
 
         return True
 

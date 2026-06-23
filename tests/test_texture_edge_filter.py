@@ -23,7 +23,6 @@ class TestSimpleValidator:
         assert validator.config.lens_edge_circularity == 0.7
         assert validator.config.lens_edge_min_area == 50000
         assert validator.config.noise_max_area == 500
-        assert validator.config.min_contrast == 5.0
 
     def test_validator_with_custom_config(self):
         """Custom config values should override defaults."""
@@ -32,14 +31,12 @@ class TestSimpleValidator:
             lens_edge_circularity=0.8,
             lens_edge_min_area=60000,
             noise_max_area=300,
-            min_contrast=10.0,
         )
         validator = SimpleValidator(config=custom)
         assert validator.config.lens_edge_margin == 0.1
         assert validator.config.lens_edge_circularity == 0.8
         assert validator.config.lens_edge_min_area == 60000
         assert validator.config.noise_max_area == 300
-        assert validator.config.min_contrast == 10.0
 
     # ------------------------------------------------------------------
     # Lens edge detection tests
@@ -147,59 +144,6 @@ class TestSimpleValidator:
         validator = SimpleValidator()
         full_image = np.ones((300, 300), dtype=np.uint8) * 128
         result = validator._is_noise(candidate, full_image)
-        assert result is False
-
-    # ------------------------------------------------------------------
-    # Low contrast detection tests
-    # ------------------------------------------------------------------
-    def test_low_contrast_rejection(self):
-        """Extremely low contrast region should be rejected."""
-        contour = np.array([[[100, 100]], [[150, 100]], [[150, 150]], [[100, 150]]], dtype=np.int32)
-
-        candidate = GrainCandidate(
-            contour=contour,
-            mask=np.zeros((200, 200), dtype=np.uint8),
-            area=2500.0,
-            perimeter=200.0,
-            circularity=0.8,
-            aspect_ratio=1.0,
-            major_axis=50.0,
-            minor_axis=50.0,
-            convexity=0.9,
-            is_flocculation=False,
-            border_distance=100.0,
-            solidity=0.9,
-        )
-
-        validator = SimpleValidator()
-        # Uniform image (std = 0)
-        full_image = np.ones((200, 200), dtype=np.uint8) * 128
-        result = validator._is_low_contrast(candidate, full_image)
-        assert result is True
-
-    def test_normal_contrast_acceptance(self):
-        """Normal contrast region should be accepted."""
-        contour = np.array([[[100, 100]], [[150, 100]], [[150, 150]], [[100, 150]]], dtype=np.int32)
-
-        candidate = GrainCandidate(
-            contour=contour,
-            mask=np.zeros((200, 200), dtype=np.uint8),
-            area=2500.0,
-            perimeter=200.0,
-            circularity=0.8,
-            aspect_ratio=1.0,
-            major_axis=50.0,
-            minor_axis=50.0,
-            convexity=0.9,
-            is_flocculation=False,
-            border_distance=100.0,
-            solidity=0.9,
-        )
-
-        validator = SimpleValidator()
-        # Random image (high std)
-        full_image = np.random.randint(0, 255, (200, 200), dtype=np.uint8)
-        result = validator._is_low_contrast(candidate, full_image)
         assert result is False
 
     # ------------------------------------------------------------------

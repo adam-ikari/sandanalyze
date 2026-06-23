@@ -4,7 +4,14 @@ import cv2
 import numpy as np
 import pytest
 
-from core.preprocessor import PreprocessConfig, preprocess
+from core.preprocessor import (
+    PreprocessConfig,
+    preprocess,
+    _preprocess_brightness,
+    _preprocess_edge,
+    _preprocess_texture,
+    _fuse_masks,
+)
 
 
 class TestPreprocessConfig:
@@ -224,3 +231,64 @@ class TestInputHandling:
 
         assert result_gray.shape == result_color.shape
         assert result_gray.dtype == result_color.dtype
+
+
+class TestBrightnessBranch:
+    """Tests for the brightness preprocessing branch."""
+
+    def test_brightness_branch_returns_binary_mask(self, sample_grain_image):
+        """Brightness branch should return a binary mask."""
+        config = PreprocessConfig()
+        result = _preprocess_brightness(sample_grain_image, config)
+
+        assert result.dtype == np.uint8
+        assert set(np.unique(result).tolist()).issubset({0, 255})
+        assert result.shape == sample_grain_image.shape
+
+
+class TestEdgeBranch:
+    """Tests for the edge preprocessing branch."""
+
+    def test_edge_branch_returns_binary_mask(self, sample_grain_image):
+        """Edge branch should return a binary mask."""
+        config = PreprocessConfig()
+        result = _preprocess_edge(sample_grain_image, config)
+
+        assert result.dtype == np.uint8
+        assert set(np.unique(result).tolist()).issubset({0, 255})
+        assert result.shape == sample_grain_image.shape
+
+
+class TestTextureBranch:
+    """Tests for the texture preprocessing branch."""
+
+    def test_texture_branch_returns_binary_mask(self, sample_grain_image):
+        """Texture branch should return a binary mask."""
+        config = PreprocessConfig()
+        result = _preprocess_texture(sample_grain_image, config)
+
+        assert result.dtype == np.uint8
+        assert set(np.unique(result).tolist()).issubset({0, 255})
+        assert result.shape == sample_grain_image.shape
+
+
+class TestMaskFusion:
+    """Tests for mask fusion."""
+
+    def test_fuse_masks_union(self):
+        """Fusing masks should return the union of all masks."""
+        mask1 = np.zeros((100, 100), dtype=np.uint8)
+        mask2 = np.zeros((100, 100), dtype=np.uint8)
+        mask3 = np.zeros((100, 100), dtype=np.uint8)
+
+        # Different regions in each mask
+        cv2.circle(mask1, (30, 30), 10, 255, -1)
+        cv2.circle(mask2, (60, 60), 10, 255, -1)
+        cv2.circle(mask3, (90, 90), 10, 255, -1)
+
+        fused = _fuse_masks([mask1, mask2, mask3])
+
+        # All three regions should be present
+        assert fused[30, 30] == 255
+        assert fused[60, 60] == 255
+        assert fused[90, 90] == 255
