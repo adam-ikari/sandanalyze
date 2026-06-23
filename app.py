@@ -25,6 +25,10 @@ from core.morphology import (
 from core.pipeline import run_detection_pipeline
 from core.preprocessor import (
     PreprocessConfig,
+    _preprocess_brightness,
+    _preprocess_edge,
+    _preprocess_texture,
+    _fuse_masks,
     auto_tune_params,
     auto_tune_for_microscope,
     auto_detect_preset,
@@ -70,6 +74,7 @@ DEFAULTS = {
     "use_auto_tune": True,
     "use_texture_validation": True,
     "texture_score_threshold": 0.15,
+    "debug_masks": None,  # dict of branch masks from last run
 }
 
 for key, default in DEFAULTS.items():
@@ -370,6 +375,22 @@ with st.sidebar:
                 st.session_state.morphologies = morphologies
                 st.session_state.statistics = statistics
                 st.session_state.last_processing_time = time.time() - start
+
+                # Compute and cache debug masks for pipeline visualisation
+                if st.session_state.original_image is not None:
+                    try:
+                        brightness_mask = _preprocess_brightness(image, config)
+                        edge_mask = _preprocess_edge(image, config)
+                        texture_mask = _preprocess_texture(image, config)
+                        fused_mask = _fuse_masks([brightness_mask, edge_mask, texture_mask])
+                        st.session_state.debug_masks = {
+                            "brightness": brightness_mask,
+                            "edge": edge_mask,
+                            "texture": texture_mask,
+                            "fused": fused_mask,
+                        }
+                    except Exception:
+                        st.session_state.debug_masks = None
             except Exception as exc:
                 st.error(f"Detection error: {exc}")
 
@@ -519,7 +540,9 @@ with col_img:
         st.info("👈 Please upload a sand grain image in the sidebar, then click 'Run Detection'")
 
 with col_res:
-    tab1, tab2, tab3 = st.tabs(["📊 Summary", "📋 Grain Data", "📈 Charts"])
+    tab1, tab2, tab3, tab4 = st.tabs(
+        ["📊 Summary", "📋 Grain Data", "📈 Charts", "🔬 Pipeline Debug"]
+    )
 
     # ── Summary tab ────────────────────────────────────────────────────────
     with tab1:
@@ -587,3 +610,37 @@ with col_res:
             )
         else:
             st.info("Please run detection first")
+
+    # ── Pipeline Debug tab (multibranch masks) ─────────────────────────────
+    with tab4:
+        debug_masks = st.session_state.debug_masks
+        if debug_masks is not None:
+            st.caption("Multibranch Preprocessing Pipeline")
+            col_b, col_e = st.columns(2)
+            with col_b:
+                st.image(
+                    debug_masks["brightness"],
+                    caption="Brightness Branch (CLAHE + adaptive threshold)",
+                    use_container_width=True,
+                )
+            with col_e:
+                st.image(
+                    debug_masks["edge"],
+                    caption="Edge Branch (strong CLAHE + unsharp mask)",
+                    use_container_width=True,
+                )
+            col_t, col_f = st.columns(2)
+            with col_t:
+                st.image(
+                    debug_masks["texture"],
+                    caption="Texture Branch (bottom-hat + uniformity filter)",
+                    use_container_width=True,
+                )
+            with col_f:
+                st.image(
+                    debug_masks["fused"],
+                    caption="Fused Mask (bitwise OR of all branches)",
+                    use_container_width=True,
+                )
+        else:
+            st.info("Please run detection first to see branch masks")
