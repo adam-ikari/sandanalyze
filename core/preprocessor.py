@@ -427,6 +427,75 @@ def _preprocess_edge(image: np.ndarray, config: PreprocessConfig) -> np.ndarray:
     return opened
 
 
+def _preprocess_texture(image: np.ndarray, config: PreprocessConfig) -> np.ndarray:
+    """Texture branch: solid color block detection.
+
+    Uses local variance and brightness difference to locate regions that are
+    internally uniform but differ from the local background.
+
+    Args:
+        image: Input image (grayscale or color).
+        config: Preprocessing configuration.
+
+    Returns:
+        Binary mask (uint8) with foreground grains as 255.
+    """
+    # 1. Grayscale conversion
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
+
+    # 2. Gaussian blur for noise reduction
+    blurred = cv2.GaussianBlur(gray, (config.blur_kernel, config.blur_kernel), 0)
+
+    # 3. Compute local mean (background estimation)
+    window = config.texture_window
+    if window % 2 == 0:
+        window += 1
+
+    gray_f = blurred.astype(np.float32)
+    local_mean = cv2.blur(gray_f, (window, window))
+    local_sq_mean = cv2.blur(gray_f ** 2, (window, window))
+    local_var = np.abs(local_sq_mean - local_mean ** 2)
+    local_std = np.sqrt(local_var)
+    diff = np.abs(gray_f - local_mean)
+
+    # 4. Detect dark uniform regions
+    is_uniform = local_std < config.texture_std_threshold
+    is_different = diff > config.texture_diff_threshold
+    dark_uniform = is_uniform & is_different
+
+    mask = (dark_uniform.astype(np.uint8)) * 255
+
+    # 5. Morphological close to connect fragments
+    close_kernel_size = config.morph_kernel_size + 2
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (close_kernel_size, close_kernel_size)
+    )
+    closed = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+
+    return closed
+
+
+def _fuse_masks(masks: list[np.ndarray]) -> np.ndarray:
+    """Fuse multiple binary masks using union (OR operation).
+
+    Args:
+        masks: List of binary masks (uint8).
+
+    Returns:
+        Binary mask (uint8) with foreground as 255.
+    """
+    if not masks:
+        raise ValueError("At least one mask is required")
+
+    fused = np.zeros_like(masks[0])
+    for mask in masks:
+        fused = cv2.bitwise_or(fused, mask)
+    return fused
+
+
 def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.ndarray:
     """Run the full preprocessing pipeline on a sand image.
 
