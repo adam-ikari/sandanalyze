@@ -371,6 +371,62 @@ def _preprocess_brightness(image: np.ndarray, config: PreprocessConfig) -> np.nd
     return closed
 
 
+def _preprocess_edge(image: np.ndarray, config: PreprocessConfig) -> np.ndarray:
+    """Edge branch: blurry boundary grain detection.
+
+    Uses stronger CLAHE, gradient enhancement, and more sensitive
+    adaptive thresholding to detect grains with low contrast or blurry boundaries.
+
+    Args:
+        image: Input image (grayscale or color).
+        config: Preprocessing configuration.
+
+    Returns:
+        Binary mask (uint8) with foreground grains as 255.
+    """
+    # 1. Grayscale
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
+
+    # 2. Strong CLAHE
+    clahe = cv2.createCLAHE(clipLimit=config.edge_clip_limit, tileGridSize=(8, 8))
+    gray = clahe.apply(gray)
+
+    # 3. Smaller Gaussian blur to preserve edges
+    edge_blur_kernel = config.edge_blur_kernel
+    if edge_blur_kernel % 2 == 0:
+        edge_blur_kernel += 1
+    blurred = cv2.GaussianBlur(gray, (edge_blur_kernel, edge_blur_kernel), 0)
+
+    # 4. Gradient enhancement using Unsharp Mask
+    blurred_for_sharpen = cv2.GaussianBlur(blurred, (0, 0), sigmaX=3)
+    sharpened = cv2.addWeighted(blurred, 1.5, blurred_for_sharpen, -0.5, 0)
+    sharpened = np.clip(sharpened, 0, 255).astype(np.uint8)
+
+    # 5. Adaptive threshold with more sensitive parameters
+    edge_adaptive_block_size = config.edge_adaptive_block_size
+    if edge_adaptive_block_size % 2 == 0:
+        edge_adaptive_block_size += 1
+    thresh = cv2.adaptiveThreshold(
+        sharpened,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        edge_adaptive_block_size,
+        config.edge_adaptive_c,
+    )
+
+    # 6. Morphological open
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (config.morph_kernel_size, config.morph_kernel_size)
+    )
+    opened = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=config.morph_open_iter)
+
+    return opened
+
+
 def preprocess(image: np.ndarray, config: PreprocessConfig | None = None) -> np.ndarray:
     """Run the full preprocessing pipeline on a sand image.
 
