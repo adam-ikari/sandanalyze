@@ -345,6 +345,7 @@ def detect_grains(
     hull_expansion_ratio: float = 1.5,
     floc_config: FlocculationConfig = None,
     crop_black_background: bool = True,
+    auto_tune_adaptive_c: bool = True,
 ) -> list[DetectionResult]:
     """Detect grains from raw image using the v6 pipeline.
 
@@ -357,6 +358,9 @@ def detect_grains(
         hull_expansion_ratio: Threshold for using convex hull vs mask filling.
         floc_config: Flocculation detection config. Uses defaults if None.
         crop_black_background: Whether to crop black background before processing.
+        auto_tune_adaptive_c: Whether to auto-tune adaptive_c based on image darkness.
+            When True, dark images get lower adaptive_c for better sensitivity.
+            When False, uses config.adaptive_c as-is.
 
     Returns:
         List of DetectionResult objects sorted by area descending.
@@ -388,15 +392,16 @@ def detect_grains(
     # Auto-tune adaptive_c based on image characteristics
     # Use 10th percentile for robustness (ignores bright grain outliers)
     effective_adaptive_c = config.adaptive_c
-    if p10_brightness < 5 and median_brightness < 10:
-        # Very dark image (like sample 25): use adaptive_c=0 for maximum sensitivity
-        effective_adaptive_c = 0
-    elif p10_brightness < 20 and median_brightness < 30:
-        # Moderately dark image: use adaptive_c=1
-        effective_adaptive_c = min(config.adaptive_c, 1)
-    elif bl_dark_ratio > 0.3:
-        # Bottom-left has dark regions
-        effective_adaptive_c = min(config.adaptive_c, 1)
+    if auto_tune_adaptive_c:
+        if p10_brightness < 5 and median_brightness < 10:
+            # Very dark image (like sample 25): use adaptive_c=0 for maximum sensitivity
+            effective_adaptive_c = 0
+        elif p10_brightness < 20 and median_brightness < 30:
+            # Moderately dark image: use adaptive_c=1
+            effective_adaptive_c = min(config.adaptive_c, 1)
+        elif bl_dark_ratio > 0.3:
+            # Bottom-left has dark regions
+            effective_adaptive_c = min(config.adaptive_c, 1)
 
     # Step 1: Optional black background crop
     x, y, w, h = 0, 0, w_img, h_img

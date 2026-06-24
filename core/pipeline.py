@@ -46,6 +46,7 @@ def run_detection_pipeline(
     crop_black_background: bool = True,
     use_texture_validation: bool = True,
     texture_score_threshold: float = 0.4,
+    auto_tune_adaptive_c: bool = True,
 ) -> tuple[list[GrainContour], list[GrainMorphology], GrainStatistics]:
     """Run the full detection pipeline on a raw image.
 
@@ -67,6 +68,7 @@ def run_detection_pipeline(
         crop_black_background: Whether to crop black background before processing.
         use_texture_validation: Whether to apply texture/edge validation.
         texture_score_threshold: Threshold for texture/edge validation score.
+        auto_tune_adaptive_c: Whether to auto-tune adaptive_c based on image darkness.
 
     Returns:
         Tuple of (grains, morphologies, statistics).
@@ -80,6 +82,7 @@ def run_detection_pipeline(
         hull_expansion_ratio=hull_expansion_ratio,
         floc_config=floc_config,
         crop_black_background=crop_black_background,
+        auto_tune_adaptive_c=auto_tune_adaptive_c,
     )
 
     # Texture/edge validation
