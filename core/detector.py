@@ -373,14 +373,29 @@ def detect_grains(
     h_img, w_img = gray.shape[:2]
 
     # Analyze image for dark regions and auto-tune adaptive_c
-    # Check bottom-left quadrant for dark regions (common location for large dark grains)
+    # Use image-wide brightness analysis for more accurate tuning
     h_img, w_img = gray.shape[:2]
+
+    # Compute image brightness statistics
+    mean_brightness = gray.mean()
+    median_brightness = np.median(gray)
+    p10_brightness = np.percentile(gray, 10)
+
+    # Check bottom-left quadrant for dark regions (common location for large dark grains)
     bl_region = gray[h_img // 2 :, : w_img // 2]
     bl_dark_ratio = np.count_nonzero(bl_region < 80) / bl_region.size
 
-    # If dark regions detected, use more sensitive adaptive_c
+    # Auto-tune adaptive_c based on image characteristics
+    # Use 10th percentile for robustness (ignores bright grain outliers)
     effective_adaptive_c = config.adaptive_c
-    if bl_dark_ratio > 0.3:
+    if p10_brightness < 5 and median_brightness < 10:
+        # Very dark image (like sample 25): use adaptive_c=0 for maximum sensitivity
+        effective_adaptive_c = 0
+    elif p10_brightness < 20 and median_brightness < 30:
+        # Moderately dark image: use adaptive_c=1
+        effective_adaptive_c = min(config.adaptive_c, 1)
+    elif bl_dark_ratio > 0.3:
+        # Bottom-left has dark regions
         effective_adaptive_c = min(config.adaptive_c, 1)
 
     # Step 1: Optional black background crop
