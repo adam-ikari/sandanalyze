@@ -412,6 +412,10 @@ Examples:
     # Parse args - default to web if no command given
     args = parser.parse_args()
 
+    # Ensure port attribute exists when defaulting to web
+    if not hasattr(args, "port"):
+        args.port = None
+
     if args.command == "web":
         return cmd_web(args)
     elif args.command == "batch":
