@@ -34,7 +34,7 @@ class PreprocessConfig:
 
     blur_kernel: int = 5
     adaptive_block_size: int = 51
-    adaptive_c: int = 5
+    adaptive_c: int = 3
     morph_kernel_size: int = 3
     morph_open_iter: int = 1
     morph_close_iter: int = 1
@@ -42,15 +42,15 @@ class PreprocessConfig:
     use_clahe: bool = True
 
     # Edge branch parameters
-    edge_clip_limit: float = 4.0
+    edge_clip_limit: float = 6.0
     edge_blur_kernel: int = 3
-    edge_adaptive_block_size: int = 21
-    edge_adaptive_c: int = 2
+    edge_adaptive_block_size: int = 31
+    edge_adaptive_c: int = 1
 
     # Texture branch parameters
-    texture_window: int = 11
-    texture_std_threshold: float = 10.0
-    texture_diff_threshold: float = 15.0
+    texture_window: int = 15
+    texture_std_threshold: float = 20.0
+    texture_diff_threshold: float = 4.0
 
     @classmethod
     def from_preset(cls, preset_name: str) -> "PreprocessConfig":
@@ -252,6 +252,17 @@ def auto_tune_for_microscope(
     contrast = features["contrast"]
     clarity = features["clarity"]
 
+    # Analyze dark region ratio to detect images with low-contrast dark grains
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
+
+    h, w = gray.shape
+    # Check bottom-left quadrant (common location for large dark grains)
+    bl_region = gray[h // 2 :, : w // 2]
+    bl_dark_ratio = np.count_nonzero(bl_region < 80) / bl_region.size
+
     # Adjust based on noise level
     # Noise ranges from 1.2 to 7.6 across our dataset
     if noise < 3:
@@ -273,16 +284,20 @@ def auto_tune_for_microscope(
 
     # Adjust based on brightness
     # Brightness ranges from 37 to 56 across our dataset
-    if brightness < 45:
+    # CRITICAL: If bottom-left has many dark pixels, use very low adaptive_c
+    if bl_dark_ratio > 0.3:
+        # Image has significant dark regions - use sensitive detection
+        adaptive_c = 1
+    elif brightness < 45:
         # Dark image - lower adaptive_c to capture faint grains
-        adaptive_c = 3
+        adaptive_c = 2
     elif brightness < 50:
-        adaptive_c = 4
+        adaptive_c = 3
     elif brightness < 53:
-        adaptive_c = 5
+        adaptive_c = 4
     else:
         # Bright image - higher adaptive_c to reduce over-detection
-        adaptive_c = 6
+        adaptive_c = 5
 
     # Adjust based on contrast
     # Contrast ranges from 55 to 77 across our dataset
@@ -428,10 +443,12 @@ def _preprocess_edge(image: np.ndarray, config: PreprocessConfig) -> np.ndarray:
 
 
 def _preprocess_texture(image: np.ndarray, config: PreprocessConfig) -> np.ndarray:
-    """Texture branch: solid color block detection.
+    """Texture branch: detect dark, uniform regions missed by other branches.
 
-    Uses local variance and brightness difference to locate regions that are
-    internally uniform but differ from the local background.
+    Uses morphological bottom-hat to find dark regions that are locally
+    uniform. The bottom-hat transform (closing - original) highlights
+    dark spots against a brighter background. Complements the brightness
+    and edge branches by detecting low-contrast dark grains.
 
     Args:
         image: Input image (grayscale or color).
@@ -446,34 +463,45 @@ def _preprocess_texture(image: np.ndarray, config: PreprocessConfig) -> np.ndarr
     else:
         gray = image.copy()
 
-    # 2. Gaussian blur for noise reduction
-    blurred = cv2.GaussianBlur(gray, (config.blur_kernel, config.blur_kernel), 0)
+    # 2. Blur to reduce noise
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    # 3. Compute local mean (background estimation)
+    # 3. Morphological bottom-hat: closing - original (detects dark regions)
     window = config.texture_window
     if window % 2 == 0:
         window += 1
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (window, window))
+    closing = cv2.morphologyEx(blurred, cv2.MORPH_CLOSE, kernel)
+    bottom_hat = cv2.subtract(closing, blurred)
 
-    gray_f = blurred.astype(np.float32)
+    # 4. Threshold bottom-hat response
+    _, dark_mask = cv2.threshold(
+        bottom_hat,
+        int(config.texture_diff_threshold),
+        255,
+        cv2.THRESH_BINARY,
+    )
+
+    # 5. Filter by local uniformity (exclude noisy regions)
+    gray_f = gray.astype(np.float32)
     local_mean = cv2.blur(gray_f, (window, window))
     local_sq_mean = cv2.blur(gray_f ** 2, (window, window))
     local_var = np.abs(local_sq_mean - local_mean ** 2)
     local_std = np.sqrt(local_var)
-    diff = np.abs(gray_f - local_mean)
 
-    # 4. Detect dark uniform regions
-    is_uniform = local_std < config.texture_std_threshold
-    is_different = diff > config.texture_diff_threshold
-    dark_uniform = is_uniform & is_different
+    # Keep regions with moderate uniformity
+    uniform_mask = local_std < config.texture_std_threshold
+    uniform_u8 = (uniform_mask.astype(np.uint8)) * 255
 
-    mask = (dark_uniform.astype(np.uint8)) * 255
+    # Combine: dark bottom-hat response AND uniform
+    combined = cv2.bitwise_and(dark_mask, uniform_u8)
 
-    # 5. Morphological close to connect fragments
-    close_kernel_size = config.morph_kernel_size + 2
-    kernel = cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE, (close_kernel_size, close_kernel_size)
+    # 6. Morphological cleanup
+    morph_kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (config.morph_kernel_size, config.morph_kernel_size)
     )
-    closed = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+    opened = cv2.morphologyEx(combined, cv2.MORPH_OPEN, morph_kernel, iterations=1)
+    closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, morph_kernel, iterations=1)
 
     return closed
 
