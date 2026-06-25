@@ -22,7 +22,6 @@ from core.preprocessor import PreprocessConfig, preprocess, auto_tune_params, fi
 from core.multiscale_detector import GrainCandidate, MultiScaleConfig
 from core.morphological_splitter import split_by_watershed, split_by_concave_points
 from core.feature_filter import filter_edge_false_positives, filter_noise, filter_filaments
-from core.shadow_enhancer import enhance_shadow_regions, validate_local_contrast
 
 __all__ = [
     # Preprocessing

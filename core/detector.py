@@ -509,10 +509,16 @@ def detect_grains(
                     # Extract the region using the bbox offset within the component mask
                     region_slice = region_mask[ry:ry+actual_h, rx:rx+actual_w]
                     if region_slice.size > 0:
-                        filtered[global_y:global_y+actual_h, global_x:global_x+actual_w] = cv2.bitwise_or(
-                            filtered[global_y:global_y+actual_h, global_x:global_x+actual_w],
-                            region_slice
-                        )
+                        # Use the actual shape of the extracted region to avoid shape mismatch
+                        # when region_mask is smaller than expected (e.g., near edges)
+                        actual_region_h, actual_region_w = region_slice.shape[:2]
+                        target_slice = filtered[
+                            global_y:global_y+actual_region_h, global_x:global_x+actual_region_w
+                        ]
+                        if target_slice.size > 0 and target_slice.shape[:2] == region_slice.shape[:2]:
+                            filtered[global_y:global_y+actual_region_h, global_x:global_x+actual_region_w] = cv2.bitwise_or(
+                                target_slice, region_slice
+                            )
 
     # Step 5: Contour detection
     contours, _ = cv2.findContours(filtered, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
