@@ -22,7 +22,7 @@ class TestPreprocessConfig:
         config = PreprocessConfig()
         assert config.blur_kernel == 5
         assert config.adaptive_block_size == 51
-        assert config.adaptive_c == 5
+        assert config.adaptive_c == 3
         assert config.morph_kernel_size == 3
         assert config.morph_open_iter == 1
         assert config.morph_close_iter == 1
