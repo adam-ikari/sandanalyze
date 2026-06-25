@@ -389,13 +389,23 @@ def detect_grains(
     bl_region = gray[h_img // 2 :, : w_img // 2]
     bl_dark_ratio = np.count_nonzero(bl_region < 80) / bl_region.size
 
-    # Auto-tune adaptive_c based on image characteristics
+    # Auto-tune parameters based on image characteristics
     # Use 10th percentile for robustness (ignores bright grain outliers)
     effective_adaptive_c = config.adaptive_c
+    effective_block_size = config.adaptive_block_size
+    effective_morph_kernel = config.morph_kernel_size
     if auto_tune_adaptive_c:
         if p10_brightness < 5 and median_brightness < 10:
             # Very dark image (like sample 25): use adaptive_c=0 for maximum sensitivity
             effective_adaptive_c = 0
+            # For extremely dark images with low contrast and few bright pixels,
+            # use smaller block size and larger morphological kernel to reduce
+            # over-segmentation while maintaining detection sensitivity
+            std_brightness = gray.std()
+            bright_ratio = np.count_nonzero(gray >= 150) / gray.size
+            if std_brightness < 65 and bright_ratio < 0.15:
+                effective_block_size = 41
+                effective_morph_kernel = 5
         elif p10_brightness < 20 and median_brightness < 30:
             # Moderately dark image: use adaptive_c=1
             effective_adaptive_c = min(config.adaptive_c, 1)
@@ -422,15 +432,15 @@ def detect_grains(
 
     roi_gray = gray[y:y+h, x:x+w]
 
-    # Step 2: Adaptive threshold in ROI with auto-tuned adaptive_c
+    # Step 2: Adaptive threshold in ROI with auto-tuned adaptive_c and block_size
     roi_thresh = cv2.adaptiveThreshold(
         roi_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV, config.adaptive_block_size, effective_adaptive_c
+        cv2.THRESH_BINARY_INV, effective_block_size, effective_adaptive_c
     )
 
-    # Step 3: Morphological open
+    # Step 3: Morphological open with auto-tuned kernel size
     kernel = cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE, (config.morph_kernel_size, config.morph_kernel_size)
+        cv2.MORPH_ELLIPSE, (effective_morph_kernel, effective_morph_kernel)
     )
     opened = cv2.morphologyEx(roi_thresh, cv2.MORPH_OPEN, kernel, iterations=config.morph_open_iter or 1)
 
@@ -482,6 +492,10 @@ def detect_grains(
         if len(split_regions) >= 2:
             split_count += 1
             for region_mask, region_bbox in split_regions:
+                # Check if split region meets minimum area
+                region_area = cv2.countNonZero(region_mask)
+                if region_area < min_area:
+                    continue
                 rx, ry, rw, rh = region_bbox
                 # Place region into filtered image
                 global_x = lx + rx
@@ -492,10 +506,13 @@ def detect_grains(
                 actual_w = end_x - global_x
                 actual_h = end_y - global_y
                 if actual_w > 0 and actual_h > 0:
-                    filtered[global_y:global_y+actual_h, global_x:global_x+actual_w] = cv2.bitwise_or(
-                        filtered[global_y:global_y+actual_h, global_x:global_x+actual_w],
-                        region_mask[:actual_h, :actual_w]
-                    )
+                    # Extract the region using the bbox offset within the component mask
+                    region_slice = region_mask[ry:ry+actual_h, rx:rx+actual_w]
+                    if region_slice.size > 0:
+                        filtered[global_y:global_y+actual_h, global_x:global_x+actual_w] = cv2.bitwise_or(
+                            filtered[global_y:global_y+actual_h, global_x:global_x+actual_w],
+                            region_slice
+                        )
 
     # Step 5: Contour detection
     contours, _ = cv2.findContours(filtered, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
